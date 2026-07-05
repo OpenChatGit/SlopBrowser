@@ -34,7 +34,9 @@ function resolveBuildInfo() {
 try {
   const buildInfo = resolveBuildInfo();
   let historyChangedCb = null;
+  let downloadChangedCb = null;
   ipcRenderer.on("slop:historyChanged", () => historyChangedCb?.());
+  ipcRenderer.on("slop:downloadChanged", () => downloadChangedCb?.());
 
   contextBridge.exposeInMainWorld("slopApp", {
     version: buildInfo.version || pkg.version,
@@ -42,6 +44,9 @@ try {
     githubURL,
     onHistoryChanged: (cb) => {
       historyChangedCb = cb;
+    },
+    onDownloadChanged: (cb) => {
+      downloadChangedCb = cb;
     },
     history: {
       getAll: () => ipcRenderer.invoke("history:getAll"),
@@ -52,12 +57,27 @@ try {
         ipcRenderer.invoke("history:removeEntries", entries),
       clear: () => ipcRenderer.invoke("history:clear"),
     },
+    downloads: {
+      getAll: () => ipcRenderer.invoke("downloads:getAll"),
+      open: (id) => ipcRenderer.invoke("downloads:open", id),
+      showInFolder: (id) => ipcRenderer.invoke("downloads:showInFolder", id),
+      cancel: (id) => ipcRenderer.invoke("downloads:cancel", id),
+      remove: (id) => ipcRenderer.invoke("downloads:remove", id),
+      removeMany: (ids) => ipcRenderer.invoke("downloads:removeMany", ids),
+      clear: () => ipcRenderer.invoke("downloads:clear"),
+    },
   });
 
   // Fallback for file:// pages when direct IPC from the guest is unavailable.
   contextBridge.exposeInMainWorld("slopHistoryBridge", {
     send(op, data) {
       ipcRenderer.sendToHost("slop:history", { op, data: data ?? null });
+    },
+  });
+
+  contextBridge.exposeInMainWorld("slopDownloadsBridge", {
+    send(op, data) {
+      ipcRenderer.sendToHost("slop:downloads", { op, data: data ?? null });
     },
   });
 } catch (_) {}
@@ -92,27 +112,37 @@ function injectPageScript(code) {
   if (!code) return;
   const doc = document;
   const run = () => {
-    const s = doc.createElement("script");
-    s.textContent = code;
     const root = doc.documentElement;
     const parent = root || doc.head || doc.body;
-    if (!parent) return;
+    if (!parent) return false;
+    const s = doc.createElement("script");
+    s.textContent = code;
     const first = root?.firstChild;
     if (first) parent.insertBefore(s, first);
     else parent.appendChild(s);
     s.remove();
+    return true;
   };
-  if (doc.documentElement || doc.head || doc.body) run();
-  else {
-    doc.addEventListener(
-      "readystatechange",
-      () => {
-        if (doc.readyState === "loading") return;
-        run();
-      },
-      { once: true }
-    );
+  if (run()) return;
+  // Poll until <html> exists — inject while still "loading", before page scripts.
+  const poll = setInterval(() => {
+    if (run()) clearInterval(poll);
+  }, 0);
+  setTimeout(() => clearInterval(poll), 15000);
+}
+
+function originOf(href) {
+  try {
+    return new URL(href).origin;
+  } catch (_) {
+    return "";
   }
+}
+
+function isFullNavigation(prev, next) {
+  if (!next || next === "about:blank" || !/^https?:/i.test(next)) return false;
+  if (!prev || prev === "about:blank") return true;
+  return originOf(prev) !== originOf(next);
 }
 
 function isInternalPage(href = location.href) {
@@ -158,11 +188,13 @@ function injectHideSelectorsEarly(selectors) {
   for (const sel of selectors) hiddenSelectors.add(sel);
 }
 
-function bootstrapEarlyBlockers() {
+function bootstrapEarlyBlockers(force = false) {
   applyDarkBase();
 
   const href = location.href;
-  if (!href || href === "about:blank" || !/^https?:/i.test(href)) return;
+  if (!href || href === "about:blank" || !/^https?:/i.test(href)) return false;
+
+  if (!force && bootstrapRes && bootstrapHref === href) return true;
 
   let enabled = true;
   try {
@@ -178,8 +210,9 @@ function bootstrapEarlyBlockers() {
     }
 
     if (res?.injected_script) {
-      injectPageScript(res.injected_script);
-      lastScriptletKey = href + ":" + res.injected_script.length;
+      const wrapped = `(function(){if(window.__slopCosmeticsBoot)return;window.__slopCosmeticsBoot=true;\n${res.injected_script}\n})();`;
+      injectPageScript(wrapped);
+      lastScriptletKey = "len:" + res.injected_script.length;
     }
     if (res?.hide_selectors?.length) {
       injectHideSelectorsEarly(res.hide_selectors);
@@ -188,12 +221,14 @@ function bootstrapEarlyBlockers() {
       active = true;
       generichide = !!res.generichide;
       exceptions = res.exceptions || [];
-      proceduralRules = res.procedural_actions || [];
+      setProceduralRules(res.procedural_actions);
+      bootstrapRes = res;
+      bootstrapHref = href;
     }
   }
 
-  /* UI-only YouTube patch after scriptlets (SABR + json-prune must run first). */
   injectYouTubeVideoPatch(href);
+  return true;
 }
 
 function injectYouTubeVideoPatch(href) {
@@ -205,6 +240,8 @@ let active = false;
 let generichide = false;
 let exceptions = [];
 let proceduralRules = [];
+let bootstrapRes = null;
+let bootstrapHref = "";
 let lastScriptletKey = "";
 let lastHref = "";
 let mutationTimer = null;
@@ -215,7 +252,27 @@ const hiddenSelectors = new Set();
 const pendingClasses = new Set();
 const pendingIds = new Set();
 
-bootstrapEarlyBlockers();
+let fastBootTimer = null;
+
+function scheduleFastBootstrap() {
+  if (fastBootTimer) return;
+  fastBootTimer = setInterval(() => {
+    const href = location.href;
+    if (!/^https?:/i.test(href)) return;
+    clearInterval(fastBootTimer);
+    fastBootTimer = null;
+    if (bootstrapEarlyBlockers(true)) {
+      lastHref = href;
+      applyCosmetics();
+    }
+  }, 16);
+  setTimeout(() => {
+    if (fastBootTimer) {
+      clearInterval(fastBootTimer);
+      fastBootTimer = null;
+    }
+  }, 30000);
+}
 
 function nodeText(el) {
   return (el.innerText || el.textContent || "").trim();
@@ -352,14 +409,18 @@ function applyProceduralAction(nodes, action) {
   }
 }
 
-function runProceduralFilters() {
-  for (const json of proceduralRules) {
-    let filter;
+/* Parse once — runProceduralFilters fires on every mutation flush. */
+function setProceduralRules(list) {
+  proceduralRules = [];
+  for (const json of list || []) {
     try {
-      filter = JSON.parse(json);
-    } catch (_) {
-      continue;
-    }
+      proceduralRules.push(JSON.parse(json));
+    } catch (_) {}
+  }
+}
+
+function runProceduralFilters() {
+  for (const filter of proceduralRules) {
     const nodes = resolveProceduralTargets(filter);
     applyProceduralAction(nodes, filter.action);
   }
@@ -487,33 +548,43 @@ async function applyCosmetics() {
   if (!href || href === "about:blank") return;
   if (href.startsWith("file:") || href.startsWith("chrome:")) return;
 
-  let enabled = false;
-  try {
-    enabled = await ipcRenderer.invoke("adblock:isEnabled");
-  } catch (_) {
-    return;
+  let res = null;
+  if (bootstrapRes && bootstrapHref === href) {
+    res = bootstrapRes;
+    bootstrapRes = null;
   }
 
-  if (!enabled) {
-    clearCosmetics();
-    return;
-  }
+  if (!res) {
+    let enabled = false;
+    try {
+      enabled = await ipcRenderer.invoke("adblock:isEnabled");
+    } catch (_) {
+      return;
+    }
 
-  let res;
-  try {
-    res = await ipcRenderer.invoke("adblock:getCosmetics", href);
-  } catch (_) {
-    return;
+    if (!enabled) {
+      clearCosmetics();
+      return;
+    }
+
+    try {
+      res = await ipcRenderer.invoke("adblock:getCosmetics", href);
+    } catch (_) {
+      return;
+    }
   }
 
   active = true;
   generichide = !!res.generichide;
   exceptions = res.exceptions || [];
-  proceduralRules = res.procedural_actions || [];
+  setProceduralRules(res.procedural_actions);
 
   addHideSelectors(res.hide_selectors);
 
-  const scriptKey = href + ":" + (res.injected_script?.length || 0);
+  /* Key by content, not href: scriptlets live per document context, so an
+   * SPA route change with identical scriptlets must not re-run them (double
+   * JSON.parse wraps, stacked handlers, …). */
+  const scriptKey = "len:" + (res.injected_script?.length || 0);
   if (res.injected_script && scriptKey !== lastScriptletKey) {
     lastScriptletKey = scriptKey;
     injectScriptlet(res.injected_script);
@@ -535,21 +606,49 @@ async function applyCosmetics() {
   startObserver();
 }
 
+/*
+ * Webview preloads persist across navigations — bootstrap must rerun on every
+ * full navigation (about:blank → site, or origin change). SPA route changes
+ * within the same origin only refresh cosmetics; scriptlets stay in the page.
+ */
 function onNavigation() {
   const href = location.href;
   if (href === lastHref) return;
+  const prev = lastHref;
   lastHref = href;
-  lastScriptletKey = "";
   hiddenSelectors.clear();
   syncStylesheet();
   applyDarkBase();
-  bootstrapEarlyBlockers();
-  applyCosmetics();
+
+  if (isFullNavigation(prev, href)) {
+    bootstrapRes = null;
+    bootstrapHref = "";
+    lastScriptletKey = "";
+    bootstrapEarlyBlockers(true);
+  } else {
+    applyCosmetics();
+  }
 }
 
 function boot() {
   lastHref = location.href;
-  applyCosmetics();
+  if (/^https?:/i.test(lastHref)) {
+    bootstrapEarlyBlockers(true);
+    applyCosmetics();
+  } else {
+    scheduleFastBootstrap();
+  }
+
+  document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+      if (!bootstrapRes && /^https?:/i.test(location.href)) {
+        bootstrapEarlyBlockers(true);
+        applyCosmetics();
+      }
+    },
+    { once: true }
+  );
 
   window.addEventListener(
     "wheel",

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>History</title>
+    <title>Downloads</title>
     <style>
       :root {
         --fg: #ffffff;
@@ -12,7 +12,6 @@
         --bg: #0e0f13;
         --surface: rgba(18, 18, 18, 0.88);
         --row-hover: rgba(255, 255, 255, 0.06);
-        --connector: #444;
       }
       * {
         box-sizing: border-box;
@@ -38,19 +37,11 @@
         background: rgba(255, 255, 255, 0.14);
         border-radius: 999px;
       }
-      *::-webkit-scrollbar-thumb:hover {
-        background: rgba(255, 255, 255, 0.22);
-      }
-      *::-webkit-scrollbar-corner {
-        background: transparent;
-      }
       #page {
         max-width: 920px;
         margin: 0 auto;
         padding: 28px 20px 48px;
       }
-
-      /* Search */
       #searchForm {
         margin-bottom: 12px;
       }
@@ -63,7 +54,6 @@
         border-radius: 999px;
         padding: 4px 18px;
         backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
       }
       .search-box:focus-within {
         border-color: #555;
@@ -79,18 +69,18 @@
         min-width: 0;
         border: none;
         background: transparent;
-        outline: none;
         color: var(--fg);
-        font-size: 15px;
-        padding: 12px 0;
-        user-select: text;
+        font: inherit;
+        font-size: 14px;
+        padding: 10px 0;
+        outline: none;
       }
       #q::placeholder {
         color: var(--muted);
       }
 
       /* Toolbar */
-      .hist-toolbar {
+      .dl-toolbar {
         display: flex;
         align-items: center;
         justify-content: flex-end;
@@ -98,10 +88,10 @@
         min-height: 36px;
         margin-bottom: 12px;
       }
-      .hist-toolbar[hidden] {
+      .dl-toolbar[hidden] {
         display: none !important;
       }
-      .hist-toolbar-btn {
+      .dl-toolbar-btn {
         display: inline-flex;
         align-items: center;
         gap: 7px;
@@ -117,31 +107,33 @@
         cursor: pointer;
         transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
       }
-      .hist-toolbar-btn svg {
+      .dl-toolbar-btn svg {
         width: 15px;
         height: 15px;
         flex-shrink: 0;
       }
-      .hist-toolbar-btn:hover {
+      .dl-toolbar-btn:hover {
         background: rgba(255, 255, 255, 0.08);
       }
-      .hist-toolbar-btn.danger:hover {
+      .dl-toolbar-btn.danger:hover {
         background: rgba(255, 107, 107, 0.12);
         border-color: rgba(255, 107, 107, 0.45);
         color: #ff9a9a;
       }
 
-      /* Card */
       #card {
         background: var(--surface);
         border: 1px solid var(--border);
         border-radius: 16px;
         overflow: hidden;
         backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
         max-height: calc(100vh - 132px);
         overflow-y: auto;
-        overflow-x: hidden;
+      }
+      #card,
+      #card * {
+        -webkit-user-select: none;
+        user-select: none;
       }
       .day-block + .day-block {
         border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -155,71 +147,27 @@
       .day-list {
         padding: 0 8px 8px;
       }
-
-      /* Prevent blue text selection on double-click / drag in the list */
-      #card,
-      #card * {
-        -webkit-user-select: none;
-        user-select: none;
-      }
-      .hist-row img {
-        -webkit-user-drag: none;
-        user-drag: none;
-      }
-
-      /* Row */
-      .hist-row {
+      .dl-row {
         display: grid;
-        grid-template-columns: 22px 52px 20px minmax(0, 1fr) 32px;
+        grid-template-columns: 22px 52px 28px minmax(0, 1fr) auto 32px;
         align-items: center;
         gap: 10px;
-        padding: 8px 10px;
+        padding: 10px 10px;
         border-radius: 10px;
-        text-decoration: none;
         color: inherit;
-        position: relative;
-        transition: background 0.12s ease;
         cursor: pointer;
+        transition: background 0.12s ease;
       }
-      .hist-row:hover {
+      .dl-row:hover {
         background: var(--row-hover);
       }
-      .hist-row.selected {
+      .dl-row.selected {
         background: rgba(108, 140, 255, 0.1);
       }
-      .hist-row.selected:hover {
+      .dl-row.selected:hover {
         background: rgba(108, 140, 255, 0.14);
       }
-      .hist-row.grouped .time-cell::before {
-        content: "";
-        position: absolute;
-        left: 50%;
-        top: -14px;
-        bottom: 50%;
-        width: 1px;
-        background: var(--connector);
-        transform: translateX(-50%);
-      }
-      .hist-row.grouped-next .time-cell::after {
-        content: "";
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        bottom: -14px;
-        width: 1px;
-        background: var(--connector);
-        transform: translateX(-50%);
-      }
-      .time-cell {
-        position: relative;
-        font-size: 12px;
-        color: var(--muted);
-        text-align: right;
-        padding-right: 4px;
-        white-space: nowrap;
-        font-variant-numeric: tabular-nums;
-      }
-      .hist-check-wrap {
+      .dl-check-wrap {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -228,14 +176,14 @@
         cursor: pointer;
         flex-shrink: 0;
       }
-      .hist-check-input {
+      .dl-check-input {
         position: absolute;
         opacity: 0;
         width: 1px;
         height: 1px;
         pointer-events: none;
       }
-      .hist-check-box {
+      .dl-check-box {
         width: 16px;
         height: 16px;
         border: 1.5px solid #5c6370;
@@ -247,7 +195,7 @@
         transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
         box-sizing: border-box;
       }
-      .hist-check-box::after {
+      .dl-check-box::after {
         content: "";
         width: 4px;
         height: 8px;
@@ -257,96 +205,108 @@
         opacity: 0;
         transition: opacity 0.12s ease;
       }
-      .hist-row:hover .hist-check-box {
+      .dl-row:hover .dl-check-box {
         border-color: #8b90a3;
       }
-      .hist-check-input:checked + .hist-check-box {
+      .dl-check-input:checked + .dl-check-box {
         border-color: var(--accent);
         background: var(--accent);
         box-shadow: 0 0 0 2px rgba(108, 140, 255, 0.2);
       }
-      .hist-check-input:checked + .hist-check-box::after {
+      .dl-check-input:checked + .dl-check-box::after {
         opacity: 1;
       }
-      .hist-check-input:focus-visible + .hist-check-box {
+      .dl-check-input:focus-visible + .dl-check-box {
         outline: 2px solid rgba(108, 140, 255, 0.45);
         outline-offset: 2px;
       }
-      .hist-icon {
-        width: 20px;
-        height: 20px;
-        display: inline-flex;
+      .dl-row img {
+        -webkit-user-drag: none;
+        user-drag: none;
+      }
+      .time-cell {
+        font-size: 12px;
+        color: var(--muted);
+        text-align: right;
+        padding-right: 4px;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      .dl-icon {
+        display: flex;
         align-items: center;
         justify-content: center;
-        flex-shrink: 0;
+        width: 28px;
+        height: 28px;
+        color: var(--accent);
       }
-      .hist-icon img {
-        width: 20px;
-        height: 20px;
-        object-fit: contain;
+      .dl-icon img,
+      .dl-icon svg {
+        width: 18px;
+        height: 18px;
         display: block;
       }
-      .hist-icon svg {
-        width: 16px;
-        height: 16px;
-        color: var(--muted);
-      }
-      .hist-main {
+      .dl-main {
         min-width: 0;
         display: flex;
-        align-items: baseline;
-        gap: 6px;
-        overflow: hidden;
+        flex-direction: column;
+        gap: 4px;
       }
-      .hist-title {
-        font-size: 14px;
+      .dl-name {
+        font-size: 13.5px;
         line-height: 1.35;
-        white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        flex-shrink: 1;
-        min-width: 0;
+        white-space: nowrap;
       }
-      .hist-domain {
-        font-size: 13px;
+      .dl-track {
+        height: 3px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+        max-width: 280px;
+      }
+      .dl-bar {
+        height: 100%;
+        background: var(--accent);
+        width: 0;
+        transition: width 0.2s ease;
+      }
+      .dl-bar.done {
+        background: #3ecf8e;
+      }
+      .dl-bar.error {
+        background: #e05c5c;
+      }
+      .dl-meta {
+        font-size: 12px;
         color: var(--muted);
         white-space: nowrap;
-        flex-shrink: 0;
+        text-align: right;
+        padding-right: 4px;
       }
-      .hist-menu {
+      .dl-menu {
         border: none;
         background: transparent;
         color: var(--muted);
-        width: 28px;
-        height: 28px;
-        border-radius: 6px;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        cursor: pointer;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        cursor: pointer;
-        opacity: 0;
-        transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
       }
-      .hist-row:hover .hist-menu,
-      .hist-menu:focus-visible,
-      .hist-menu.menu-open {
-        opacity: 1;
-      }
-      .hist-menu:hover {
+      .dl-menu:hover {
         background: rgba(255, 255, 255, 0.08);
         color: var(--fg);
       }
-      .hist-menu svg {
-        width: 16px;
-        height: 16px;
-      }
-
-      /* Context menu */
       #ctxMenu {
         position: fixed;
         z-index: 50;
         min-width: 180px;
         padding: 4px;
+        border-radius: 10px;
         background: #1c1c20;
         border: 1px solid var(--border);
         box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
@@ -371,10 +331,13 @@
       .ctx-item:hover {
         background: var(--row-hover);
       }
+      .ctx-item:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
       .ctx-item.danger {
         color: #ff6b6b;
       }
-
       .empty {
         padding: 48px 24px;
         text-align: center;
@@ -404,13 +367,13 @@
             type="search"
             spellcheck="false"
             autocomplete="off"
-            placeholder="Search history"
+            placeholder="Search downloads"
           />
         </div>
       </form>
 
-      <div id="histToolbar" class="hist-toolbar" hidden>
-        <button type="button" id="deleteBtn" class="hist-toolbar-btn danger">
+      <div id="dlToolbar" class="dl-toolbar" hidden>
+        <button type="button" id="deleteBtn" class="dl-toolbar-btn danger">
           <i data-lucide="trash-2"></i>
           <span id="deleteBtnLabel">Delete all</span>
         </button>
@@ -418,16 +381,18 @@
 
       <div id="card">
         <div id="content"></div>
-        <p id="emptyAll" class="empty" hidden>No history yet — visit a few pages first.</p>
+        <p id="emptyAll" class="empty" hidden>No downloads yet.</p>
         <p id="emptyFilter" class="empty-filter">No results for your search.</p>
       </div>
     </div>
 
     <div id="ctxMenu" role="menu">
-      <button type="button" class="ctx-item" data-action="open">Open in new tab</button>
-      <button type="button" class="ctx-item" data-action="copy">Copy link</button>
+      <button type="button" class="ctx-item" data-action="open">Open file</button>
+      <button type="button" class="ctx-item" data-action="show">Show in folder</button>
+      <button type="button" class="ctx-item" data-action="copy">Copy file path</button>
+      <button type="button" class="ctx-item" data-action="cancel">Cancel download</button>
       <button type="button" class="ctx-item danger" data-action="remove">
-        Remove from history
+        Remove from list
       </button>
     </div>
 
@@ -439,15 +404,15 @@
 
       let allEntries = [];
       let ctxTarget = null;
-      const selectedKeys = new Set();
-      let lastSelectedKey = null;
+      const selectedIds = new Set();
+      let lastSelectedId = null;
 
       function entryKey(entry) {
-        return entry.url + "\0" + entry.visitedAt;
+        return String(entry.id);
       }
 
       function keyFromRow(row) {
-        return row.dataset.url + "\0" + row.dataset.visitedAt;
+        return row.dataset.id;
       }
 
       function getVisibleEntries() {
@@ -459,11 +424,11 @@
       }
 
       function applySelectionToDom() {
-        document.querySelectorAll(".hist-row").forEach((row) => {
+        document.querySelectorAll(".dl-row").forEach((row) => {
           const key = keyFromRow(row);
-          const sel = selectedKeys.has(key);
+          const sel = selectedIds.has(key);
           row.classList.toggle("selected", sel);
-          const input = row.querySelector(".hist-check-input");
+          const input = row.querySelector(".dl-check-input");
           if (input) input.checked = sel;
         });
         updateToolbar();
@@ -476,107 +441,61 @@
         if (a === -1 || b === -1) return;
         const lo = Math.min(a, b);
         const hi = Math.max(a, b);
-        for (let i = lo; i <= hi; i++) selectedKeys.add(keys[i]);
+        for (let i = lo; i <= hi; i++) selectedIds.add(keys[i]);
       }
 
       function updateToolbar() {
-        const bar = document.getElementById("histToolbar");
+        const bar = document.getElementById("dlToolbar");
         const label = document.getElementById("deleteBtnLabel");
-        const count = selectedKeys.size;
+        const count = selectedIds.size;
         bar.hidden = !allEntries.length;
         label.textContent =
           count > 0 ? "Delete selected (" + count + ")" : "Delete all";
       }
 
-      function historyApi() {
-        return window.slopApp?.history || null;
+      function downloadsApi() {
+        return window.slopApp?.downloads || null;
       }
 
-      function historyBridge() {
-        return window.slopHistoryBridge || null;
+      function downloadBridge() {
+        return window.slopDownloadsBridge || null;
       }
 
-      async function reloadFromStore() {
-        const api = historyApi();
-        if (api?.getAll) {
-          try {
-            const entries = await api.getAll();
-            window.renderSlopHistory(entries);
-            return;
-          } catch (_) {}
-        }
-        const bridge = historyBridge();
-        if (bridge?.send) {
-          bridge.send("refresh");
-          return;
-        }
-        updateToolbar();
-        renderList(filterEntries(document.getElementById("q").value));
+      function formatBytes(bytes) {
+        const n = Number(bytes);
+        if (!Number.isFinite(n) || n < 0) return "—";
+        if (n < 1024) return n + " B";
+        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+        if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+        return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB";
       }
 
-      async function persistRemoveEntry(entry) {
-        const api = historyApi();
-        if (api?.removeEntry) {
-          await api.removeEntry(entry.url, entry.visitedAt).catch(() => {});
-          return "direct";
-        }
-        const bridge = historyBridge();
-        if (bridge?.send) {
-          bridge.send("removeEntry", entry);
-          return "bridge";
-        }
-        return null;
+      function formatByteRange(received, total) {
+        if (total > 0) return formatBytes(received) + " / " + formatBytes(total);
+        if (received > 0) return formatBytes(received);
+        return "—";
       }
 
-      async function deleteFromToolbar() {
-        const api = historyApi();
-        const bridge = historyBridge();
-        if (!api && !bridge) return;
-
-        let mode = "direct";
-        if (selectedKeys.size === 0) {
-          if (api?.clear) await api.clear().catch(() => {});
-          else if (bridge?.send) {
-            bridge.send("clear");
-            mode = "bridge";
-          }
-        } else {
-          const entries = [...selectedKeys].map((k) => {
-            const sep = k.indexOf("\0");
-            return {
-              url: k.slice(0, sep),
-              visitedAt: Number(k.slice(sep + 1)),
-            };
-          });
-          if (api?.removeEntries) {
-            await api.removeEntries(entries).catch(() => {});
-          } else if (api?.removeEntry) {
-            await Promise.all(
-              entries.map((e) => api.removeEntry(e.url, e.visitedAt).catch(() => {}))
-            );
-          } else if (bridge?.send) {
-            bridge.send("removeEntries", { entries });
-            mode = "bridge";
-          }
+      function progressPct(entry) {
+        if (!entry) return 0;
+        if (entry.state === "completed") return 100;
+        if (entry.state === "cancelled" || entry.state === "interrupted") return 0;
+        if (entry.totalBytes > 0) {
+          return Math.min(
+            100,
+            Math.round((entry.receivedBytes / entry.totalBytes) * 100)
+          );
         }
-        selectedKeys.clear();
-        lastSelectedKey = null;
-        if (mode === "direct") await reloadFromStore();
+        return entry.receivedBytes > 0 ? -1 : 0;
       }
 
-      function globeSvg() {
-        return (
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-          '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>'
-        );
-      }
-
-      function domainFromUrl(url) {
-        try {
-          return new URL(url).hostname.replace(/^www\./, "");
-        } catch (_) {
-          return url;
-        }
+      function stateLabel(entry) {
+        if (entry.state === "completed") return "Completed";
+        if (entry.state === "cancelled") return "Cancelled";
+        if (entry.state === "interrupted") return "Failed";
+        const pct = progressPct(entry);
+        if (pct < 0) return "Downloading…";
+        return pct + "%";
       }
 
       function formatTime(ts) {
@@ -599,7 +518,6 @@
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
         const key = dayKey(d.getTime());
-        const weekday = d.toLocaleDateString(undefined, { weekday: "long" });
         const dateStr = d.toLocaleDateString(undefined, {
           weekday: "long",
           month: "long",
@@ -614,110 +532,217 @@
       function groupByDay(entries) {
         const map = new Map();
         for (const e of entries) {
-          const k = dayKey(e.visitedAt);
+          const k = dayKey(e.startedAt);
           if (!map.has(k)) map.set(k, []);
           map.get(k).push(e);
         }
         return [...map.entries()].sort((a, b) => {
-          const ta = a[1][0]?.visitedAt || 0;
-          const tb = b[1][0]?.visitedAt || 0;
+          const ta = a[1][0]?.startedAt || 0;
+          const tb = b[1][0]?.startedAt || 0;
           return tb - ta;
         });
-      }
-
-      function sameSite(a, b) {
-        return domainFromUrl(a.url) === domainFromUrl(b.url);
       }
 
       function filterEntries(query) {
         const q = query.trim().toLowerCase();
         if (!q) return allEntries;
         return allEntries.filter((e) => {
-          const hay =
-            (e.title || "") +
-            " " +
-            (e.url || "") +
-            " " +
-            domainFromUrl(e.url);
+          const hay = (e.filename || "") + " " + (e.url || "") + " " + (e.savePath || "");
           return hay.toLowerCase().includes(q);
         });
       }
 
+      function faviconCandidates(entry) {
+        const out = [];
+        const push = (url) => {
+          if (url && !out.includes(url)) out.push(url);
+        };
+        push(entry.favicon);
+        const ref = entry.sourceUrl || entry.url || "";
+        try {
+          const u = new URL(ref);
+          if (u.protocol === "http:" || u.protocol === "https:") {
+            push(
+              "https://www.google.com/s2/favicons?domain=" +
+                encodeURIComponent(u.hostname) +
+                "&sz=64"
+            );
+            push(u.origin + "/favicon.ico");
+          }
+        } catch (_) {}
+        return out;
+      }
+
+      function globeSvg() {
+        return (
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>'
+        );
+      }
+
+      function downloadIconSvg() {
+        return (
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>'
+        );
+      }
+
       function buildIcon(entry) {
         const wrap = document.createElement("span");
-        wrap.className = "hist-icon";
-        if (entry.favicon) {
-          const img = document.createElement("img");
-          img.src = entry.favicon;
-          img.alt = "";
-          img.referrerPolicy = "no-referrer";
-          img.onerror = () => {
-            wrap.innerHTML = globeSvg();
-          };
-          wrap.appendChild(img);
-        } else {
+        wrap.className = "dl-icon";
+        const candidates = faviconCandidates(entry);
+        if (!candidates.length) {
           wrap.innerHTML = globeSvg();
+          return wrap;
         }
+        const img = document.createElement("img");
+        img.alt = "";
+        img.referrerPolicy = "no-referrer";
+        let idx = 0;
+        img.onerror = () => {
+          idx += 1;
+          if (idx < candidates.length) {
+            img.src = candidates[idx];
+            return;
+          }
+          wrap.innerHTML = globeSvg();
+        };
+        img.src = candidates[0];
+        wrap.appendChild(img);
         return wrap;
       }
 
-      function buildRow(entry, opts) {
+      async function reloadFromStore() {
+        const api = downloadsApi();
+        if (api?.getAll) {
+          try {
+            const entries = await api.getAll();
+            window.renderSlopDownloads(entries);
+            return;
+          } catch (_) {}
+        }
+        const bridge = downloadBridge();
+        if (bridge?.send) {
+          bridge.send("refresh");
+          return;
+        }
+        renderList(filterEntries(document.getElementById("q").value));
+      }
+
+      async function persistRemoveEntry(entry) {
+        const api = downloadsApi();
+        if (api?.remove) {
+          await api.remove(entry.id).catch(() => {});
+          return "direct";
+        }
+        const bridge = downloadBridge();
+        if (bridge?.send) {
+          bridge.send("remove", { id: entry.id });
+          return "bridge";
+        }
+        return null;
+      }
+
+      async function deleteFromToolbar() {
+        const api = downloadsApi();
+        const bridge = downloadBridge();
+        if (!api && !bridge) return;
+
+        let mode = "direct";
+        if (selectedIds.size === 0) {
+          if (api?.clear) await api.clear().catch(() => {});
+          else if (bridge?.send) {
+            bridge.send("clear");
+            mode = "bridge";
+          }
+        } else {
+          const ids = [...selectedIds];
+          if (api?.removeMany) await api.removeMany(ids).catch(() => {});
+          else if (bridge?.send) {
+            bridge.send("removeMany", { ids });
+            mode = "bridge";
+          }
+        }
+        selectedIds.clear();
+        lastSelectedId = null;
+        if (mode === "direct") await reloadFromStore();
+      }
+
+      function buildRow(entry) {
         const row = document.createElement("div");
-        row.className = "hist-row";
-        row.dataset.url = entry.url;
-        row.dataset.visitedAt = String(entry.visitedAt);
+        row.className = "dl-row";
+        row.dataset.id = entry.id;
         const key = entryKey(entry);
-        if (selectedKeys.has(key)) row.classList.add("selected");
-        if (opts.grouped) row.classList.add("grouped");
-        if (opts.groupedNext) row.classList.add("grouped-next");
+        if (selectedIds.has(key)) row.classList.add("selected");
 
         const checkWrap = document.createElement("label");
-        checkWrap.className = "hist-check-wrap";
+        checkWrap.className = "dl-check-wrap";
         checkWrap.addEventListener("click", (e) => e.stopPropagation());
 
         const check = document.createElement("input");
         check.type = "checkbox";
-        check.className = "hist-check-input";
-        check.checked = selectedKeys.has(key);
+        check.className = "dl-check-input";
+        check.checked = selectedIds.has(key);
         check.addEventListener("click", (e) => {
-          if (e.shiftKey && lastSelectedKey != null) {
+          if (e.shiftKey && lastSelectedId != null) {
             e.preventDefault();
-            selectRange(lastSelectedKey, key);
+            selectRange(lastSelectedId, key);
             applySelectionToDom();
             return;
           }
-          lastSelectedKey = key;
+          lastSelectedId = key;
         });
         check.addEventListener("change", () => {
-          if (check.checked) selectedKeys.add(key);
-          else selectedKeys.delete(key);
+          if (check.checked) selectedIds.add(key);
+          else selectedIds.delete(key);
           row.classList.toggle("selected", check.checked);
           updateToolbar();
         });
 
         const checkBox = document.createElement("span");
-        checkBox.className = "hist-check-box";
+        checkBox.className = "dl-check-box";
         checkWrap.appendChild(check);
         checkWrap.appendChild(checkBox);
 
         const time = document.createElement("span");
         time.className = "time-cell";
-        time.textContent = formatTime(entry.visitedAt);
+        time.textContent = formatTime(entry.startedAt);
+
+        const icon = buildIcon(entry);
 
         const main = document.createElement("div");
-        main.className = "hist-main";
-        const title = document.createElement("span");
-        title.className = "hist-title";
-        title.textContent = entry.title || entry.url;
-        const domain = document.createElement("span");
-        domain.className = "hist-domain";
-        domain.textContent = domainFromUrl(entry.url);
-        main.appendChild(title);
-        main.appendChild(domain);
+        main.className = "dl-main";
+        const name = document.createElement("span");
+        name.className = "dl-name";
+        name.title = entry.filename || "";
+        name.textContent = entry.filename || "Download";
+
+        const track = document.createElement("div");
+        track.className = "dl-track";
+        const bar = document.createElement("div");
+        bar.className = "dl-bar";
+        const pct = progressPct(entry);
+        if (entry.state === "completed") bar.classList.add("done");
+        else if (entry.state === "cancelled" || entry.state === "interrupted") {
+          bar.classList.add("error");
+        }
+        if (entry.state === "progressing") {
+          bar.style.width = pct < 0 ? "35%" : Math.max(pct, 2) + "%";
+          track.appendChild(bar);
+          main.appendChild(name);
+          main.appendChild(track);
+        } else {
+          main.appendChild(name);
+        }
+
+        const meta = document.createElement("span");
+        meta.className = "dl-meta";
+        meta.textContent =
+          stateLabel(entry) + " · " + formatByteRange(entry.receivedBytes, entry.totalBytes);
 
         const menuBtn = document.createElement("button");
         menuBtn.type = "button";
-        menuBtn.className = "hist-menu";
+        menuBtn.className = "dl-menu";
         menuBtn.setAttribute("aria-label", "More actions");
         menuBtn.innerHTML = '<i data-lucide="ellipsis-vertical"></i>';
         menuBtn.addEventListener("click", (e) => {
@@ -727,14 +752,15 @@
         });
 
         row.addEventListener("click", (e) => {
-          if (e.target.closest(".hist-check-wrap, .hist-menu")) return;
-          window.location.href = entry.url;
+          if (e.target.closest(".dl-check-wrap, .dl-menu")) return;
+          if (entry.state === "completed") openEntry(entry);
         });
 
         row.appendChild(checkWrap);
         row.appendChild(time);
-        row.appendChild(buildIcon(entry));
+        row.appendChild(icon);
         row.appendChild(main);
+        row.appendChild(meta);
         row.appendChild(menuBtn);
         return row;
       }
@@ -743,7 +769,6 @@
         const content = document.getElementById("content");
         const emptyAll = document.getElementById("emptyAll");
         const emptyFilter = document.getElementById("emptyFilter");
-        const query = document.getElementById("q").value;
 
         content.replaceChildren();
         emptyAll.hidden = true;
@@ -766,20 +791,13 @@
           block.className = "day-block";
           const head = document.createElement("div");
           head.className = "day-head";
-          head.textContent = formatDayHeader(dayEntries[0].visitedAt);
+          head.textContent = formatDayHeader(dayEntries[0].startedAt);
           block.appendChild(head);
 
           const list = document.createElement("div");
           list.className = "day-list";
-
-          for (let i = 0; i < dayEntries.length; i++) {
-            const prev = dayEntries[i - 1];
-            const next = dayEntries[i + 1];
-            const grouped = prev && sameSite(prev, dayEntries[i]);
-            const groupedNext = next && sameSite(next, dayEntries[i]);
-            list.appendChild(
-              buildRow(dayEntries[i], { grouped, groupedNext })
-            );
+          for (const entry of dayEntries) {
+            list.appendChild(buildRow(entry));
           }
           block.appendChild(list);
           content.appendChild(block);
@@ -791,40 +809,55 @@
         updateToolbar();
       }
 
+      async function openEntry(entry) {
+        const api = downloadsApi();
+        if (api?.open) await api.open(entry.id).catch(() => {});
+        else downloadBridge()?.send?.("open", { id: entry.id });
+      }
+
+      async function showEntry(entry) {
+        const api = downloadsApi();
+        if (api?.showInFolder) await api.showInFolder(entry.id).catch(() => {});
+        else downloadBridge()?.send?.("showInFolder", { id: entry.id });
+      }
+
+      async function cancelEntry(entry) {
+        const api = downloadsApi();
+        if (api?.cancel) await api.cancel(entry.id).catch(() => {});
+        else downloadBridge()?.send?.("cancel", { id: entry.id });
+      }
+
       function openCtxMenu(anchor, entry) {
         ctxTarget = entry;
         const menu = document.getElementById("ctxMenu");
+        menu.querySelector('[data-action="open"]').disabled = entry.state !== "completed";
+        menu.querySelector('[data-action="show"]').disabled = !entry.savePath;
+        menu.querySelector('[data-action="copy"]').disabled = !entry.savePath;
+        menu.querySelector('[data-action="cancel"]').disabled = entry.state !== "progressing";
         const r = anchor.getBoundingClientRect();
         menu.style.left = Math.max(8, r.right - 180) + "px";
         menu.style.top = r.bottom + 4 + "px";
         menu.classList.add("open");
-        document.querySelectorAll(".hist-menu.menu-open").forEach((b) => {
-          b.classList.remove("menu-open");
-        });
-        anchor.classList.add("menu-open");
       }
 
       function closeCtxMenu() {
         document.getElementById("ctxMenu").classList.remove("open");
-        document.querySelectorAll(".hist-menu.menu-open").forEach((b) => {
-          b.classList.remove("menu-open");
-        });
         ctxTarget = null;
       }
 
       document.getElementById("ctxMenu").addEventListener("click", (e) => {
         const btn = e.target.closest(".ctx-item");
-        if (!btn || !ctxTarget) return;
+        if (!btn || !ctxTarget || btn.disabled) return;
         const action = btn.dataset.action;
-        const url = ctxTarget.url;
-        if (action === "open") {
-          window.open(url, "_blank");
-        } else if (action === "copy") {
-          navigator.clipboard?.writeText(url).catch(() => {});
-        } else if (action === "remove") {
-          const key = entryKey(ctxTarget);
-          persistRemoveEntry(ctxTarget).then((mode) => {
-            selectedKeys.delete(key);
+        const entry = ctxTarget;
+        if (action === "open") openEntry(entry);
+        else if (action === "show") showEntry(entry);
+        else if (action === "copy") {
+          navigator.clipboard?.writeText(entry.savePath || "").catch(() => {});
+        }         else if (action === "cancel") cancelEntry(entry);
+        else if (action === "remove") {
+          persistRemoveEntry(entry).then((mode) => {
+            selectedIds.delete(entryKey(entry));
             if (mode === "direct") reloadFromStore();
           });
         }
@@ -832,7 +865,7 @@
       });
 
       document.addEventListener("click", (e) => {
-        if (!e.target.closest("#ctxMenu") && !e.target.closest(".hist-menu")) {
+        if (!e.target.closest("#ctxMenu") && !e.target.closest(".dl-menu")) {
           closeCtxMenu();
         }
       });
@@ -851,32 +884,36 @@
         e.preventDefault();
       });
 
-      window.renderSlopHistory = function (entries, opts) {
+      window.renderSlopDownloads = function (entries, opts) {
         const preserveSelection = opts?.preserveSelection;
         allEntries = (entries || []).map((e) => ({
-          url: e.url,
-          title: e.title || e.url,
+          id: String(e.id),
+          filename: e.filename || "Download",
+          url: e.url || "",
+          savePath: e.savePath || "",
+          sourceUrl: e.sourceUrl || "",
           favicon: e.favicon || "",
-          visitedAt:
-            typeof e.visitedAt === "number"
-              ? e.visitedAt
-              : Number(e.visitedAt) || 0,
+          receivedBytes: Number(e.receivedBytes) || 0,
+          totalBytes: Number(e.totalBytes) || 0,
+          state: e.state || "completed",
+          startedAt: Number(e.startedAt) || Date.now(),
+          endedAt: e.endedAt != null ? Number(e.endedAt) : null,
         }));
         if (!preserveSelection) {
-          selectedKeys.clear();
-          lastSelectedKey = null;
+          selectedIds.clear();
+          lastSelectedId = null;
         } else {
           const valid = new Set(allEntries.map(entryKey));
-          for (const key of selectedKeys) {
-            if (!valid.has(key)) selectedKeys.delete(key);
+          for (const id of selectedIds) {
+            if (!valid.has(id)) selectedIds.delete(id);
           }
         }
         updateToolbar();
         renderList(filterEntries(document.getElementById("q").value));
       };
 
-      if (window.slopApp?.onHistoryChanged) {
-        window.slopApp.onHistoryChanged(() => reloadFromStore());
+      if (window.slopApp?.onDownloadChanged) {
+        window.slopApp.onDownloadChanged(() => reloadFromStore());
       }
 
       reloadFromStore();

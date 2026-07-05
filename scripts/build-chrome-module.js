@@ -66,7 +66,7 @@ body = stripMultilineConstFrom(
 body = stripMultilineConstFrom(
   body,
   "^const els = \\{",
-  "^const BOOKMARKS_MENU_MAX = \\d+;\\n"
+  "^\\};\\n\\n/\\*\\* Per-tab blocked ad count \\(tab id -> number\\)\\. \\*/\\n"
 );
 body = stripMultilineConstFrom(
   body,
@@ -130,6 +130,7 @@ const header = `/**
 import {
   HOME,
   HISTORY,
+  DOWNLOADS,
   PARTITION,
   HOME_ADDRESS_PLACEHOLDER,
   DEFAULT_ADDRESS_PLACEHOLDER,
@@ -143,6 +144,9 @@ import {
   HISTORY_RECENT_MAX,
   BROWSE_HISTORY_MAX,
   BOOKMARKS_MENU_MAX,
+  DOWNLOADS_MENU_MAX,
+  DOWNLOAD_RING_R,
+  DOWNLOAD_RING_C,
   SIDE_RAIL_ITEMS,
   CHROME_UA,
   SIDE_PANEL_MIN_W,
@@ -162,11 +166,16 @@ import {
 import {
   isHome,
   isHistoryPage,
+  isDownloadsPage,
   displayURL,
   pickFavicon,
   faviconFallback,
+  googleFavicon,
+  hostFromUrl,
   escapeHTML,
   truncate,
+  formatBytes,
+  formatByteRange,
   renderIcons,
   updateRailIconSizes,
   toURL,
@@ -192,11 +201,24 @@ export function startChrome() {
   createTab(HOME);
   refreshBrowseHistory();
   refreshBookmarks();
+  refreshDownloads();
   window.slopAPI.onHistoryChanged(() => {
     refreshBrowseHistory();
     for (const tab of tabs) {
       if (isHistoryPage(tab.url)) injectHistoryPage(tab);
     }
+  });
+  window.slopAPI.onDownloadChanged(() => {
+    refreshDownloads();
+    for (const tab of tabs) {
+      if (isDownloadsPage(tab.url)) injectDownloadsPage(tab);
+    }
+  });
+  window.slopAPI.onDownloadStarted((info) => {
+    revealDownloadIndicator();
+    attachDownloadFavicon(info)
+      .then(() => refreshDownloads())
+      .catch(() => {});
   });
 }
 
@@ -209,6 +231,7 @@ Object.assign(api, {
   renderTabs,
   reloadActiveTab,
   openHistoryPage,
+  openDownloadsPage,
   openRecentUrl,
   reopenClosedTab,
   toggleMenu,

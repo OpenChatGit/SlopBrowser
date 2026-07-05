@@ -6,9 +6,11 @@
 
 const HOME = window.slopAPI.newTabURL;
 const HISTORY = window.slopAPI.historyURL;
+const DOWNLOADS = window.slopAPI.downloadsURL;
 const PARTITION = window.slopAPI.partition;
 // Friendly address shown instead of the internal file:// history page URL.
 const HISTORY_DISPLAY = "slop://history";
+const DOWNLOADS_DISPLAY = "slop://downloads";
 const HOME_ADDRESS_PLACEHOLDER = "Search the web";
 const DEFAULT_ADDRESS_PLACEHOLDER = "Search or enter address";
 
@@ -45,8 +47,18 @@ function isHistoryPage(url) {
     return url === HISTORY || url.startsWith(base);
   }
 }
+function isDownloadsPage(url) {
+  if (!url) return false;
+  try {
+    return new URL(url).pathname === new URL(DOWNLOADS).pathname;
+  } catch (_) {
+    const base = DOWNLOADS.split("?")[0];
+    return url === DOWNLOADS || url.startsWith(base);
+  }
+}
 function displayURL(url) {
   if (isHistoryPage(url)) return HISTORY_DISPLAY;
+  if (isDownloadsPage(url)) return DOWNLOADS_DISPLAY;
   return url;
 }
 
@@ -61,7 +73,7 @@ function syncAddressBar(url) {
 }
 
 function canBookmark(url) {
-  if (!url || isHome(url) || isHistoryPage(url)) return false;
+  if (!url || isHome(url) || isHistoryPage(url) || isDownloadsPage(url)) return false;
   try {
     const u = new URL(url);
     return u.protocol === "http:" || u.protocol === "https:" || u.protocol === "file:";
@@ -468,7 +480,7 @@ function closeTab(id) {
   const idx = tabs.findIndex((t) => t.id === id);
   if (idx === -1) return;
   const [tab] = tabs.splice(idx, 1);
-  if (!isHome(tab.url) && !isHistoryPage(tab.url)) {
+  if (!isHome(tab.url) && !isHistoryPage(tab.url) && !isDownloadsPage(tab.url)) {
     closedTabs.unshift(historyEntryFromTab(tab));
     if (closedTabs.length > 25) closedTabs.pop();
   }
@@ -620,12 +632,32 @@ async function handleHistoryGuestMessage(tab, payload) {
   if (isHistoryPage(tab.url)) await injectHistoryPage(tab);
 }
 
+async function handleDownloadsGuestMessage(tab, payload) {
+  const { op, data } = payload || {};
+  const d = window.slopAPI.downloads;
+  try {
+    if (op === "open" && data?.id) await d.open(data.id);
+    else if (op === "showInFolder" && data?.id) await d.showInFolder(data.id);
+    else if (op === "cancel" && data?.id) await d.cancel(data.id);
+    else if (op === "remove" && data?.id) await d.remove(data.id);
+    else if (op === "removeMany" && data?.ids) await d.removeMany(data.ids);
+    else if (op === "clear") await d.clear();
+    else if (op !== "refresh") return;
+  } catch (_) {}
+  if (isDownloadsPage(tab.url)) await injectDownloadsPage(tab);
+}
+
 function wireWebview(tab) {
   const wv = tab.webview;
 
   wv.addEventListener("ipc-message", (e) => {
-    if (e.channel !== "slop:history") return;
-    handleHistoryGuestMessage(tab, e.args[0]).catch(() => {});
+    if (e.channel === "slop:history") {
+      handleHistoryGuestMessage(tab, e.args[0]).catch(() => {});
+      return;
+    }
+    if (e.channel === "slop:downloads") {
+      handleDownloadsGuestMessage(tab, e.args[0]).catch(() => {});
+    }
   });
 
   const bindWebContentsId = () => {
@@ -637,10 +669,12 @@ function wireWebview(tab) {
   wv.addEventListener("dom-ready", () => {
     bindWebContentsId();
     if (isHistoryPage(tab.url)) injectHistoryPage(tab);
+    if (isDownloadsPage(tab.url)) injectDownloadsPage(tab);
   });
 
   wv.addEventListener("did-finish-load", () => {
     if (isHistoryPage(tab.url)) injectHistoryPage(tab);
+    if (isDownloadsPage(tab.url)) injectDownloadsPage(tab);
   });
 
   wv.addEventListener("page-title-updated", (e) => {
@@ -649,7 +683,9 @@ function wireWebview(tab) {
       ? "Home"
       : isHistoryPage(href)
         ? "History"
-        : e.title;
+        : isDownloadsPage(href)
+          ? "Downloads"
+          : e.title;
     if (next === tab.title) return;
     tab.title = next;
     updateTabPresentation(tab);
@@ -660,6 +696,7 @@ function wireWebview(tab) {
     if (icon && icon !== tab.favicon) {
       tab.favicon = icon;
       updateTabPresentation(tab);
+      syncDownloadFaviconsForTab(tab).catch(() => {});
     }
   });
 
@@ -682,6 +719,10 @@ function wireWebview(tab) {
     }
     if (isHome(tab.url)) tab.title = "Home";
     else if (isHistoryPage(tab.url)) tab.title = "History";
+    else if (isDownloadsPage(tab.url)) {
+      tab.title = "Downloads";
+      if (tab.id === activeId) dismissDownloadIndicator();
+    }
     pushSessionHistory(tab);
     if (tab.id === activeId) {
       syncAddressBar(tab.url);
@@ -827,7 +868,7 @@ function historyEntryFromTab(tab) {
 }
 
 function pushSessionHistory(tab) {
-  if (isHome(tab.url) || isHistoryPage(tab.url)) return;
+  if (isHome(tab.url) || isHistoryPage(tab.url) || isDownloadsPage(tab.url)) return;
   const entry = historyEntryFromTab(tab);
   if (sessionHistory[0]?.url === entry.url) {
     sessionHistory[0] = entry;
@@ -879,6 +920,9 @@ async function refreshBrowseHistory() {
   } catch (_) {
     browseHistory = [];
   }
+  if (!els.menu.classList.contains("hidden")) {
+    renderHistorySubmenu();
+  }
 }
 
 async function injectHistoryPage(tab) {
@@ -887,6 +931,21 @@ async function injectHistoryPage(tab) {
   tab.webview
     .executeJavaScript(
       "(function(d){function apply(){if(typeof window.renderSlopHistory==='function'){window.renderSlopHistory(d);return true}return false}if(!apply())document.addEventListener('DOMContentLoaded',function(){apply()},{once:true})})(" +
+        payload +
+        ")"
+    )
+    .catch(() => {});
+}
+
+async function injectDownloadsPage(tab) {
+  let entries = [];
+  try {
+    entries = (await window.slopAPI.downloads.getAll()) || [];
+  } catch (_) {}
+  const payload = JSON.stringify(entries);
+  tab.webview
+    .executeJavaScript(
+      "(function(d){function apply(){if(typeof window.renderSlopDownloads==='function'){window.renderSlopDownloads(d);return true}return false}if(!apply())document.addEventListener('DOMContentLoaded',function(){apply()},{once:true})})(" +
         payload +
         ")"
     )
@@ -904,17 +963,43 @@ function openHistoryPage() {
   }
 }
 
+function openDownloadsPage() {
+  dismissDownloadIndicator();
+  toggleMenu(false);
+  const tab = activeTab();
+  if (tab) {
+    Promise.resolve(tab.webview.loadURL(DOWNLOADS)).catch(() => {});
+    tab.webview.focus();
+  } else {
+    createTab(DOWNLOADS);
+  }
+}
+
 function historyRecentItems() {
   const items = [];
+  const seen = new Set();
+
   closedTabs.forEach((entry, i) => {
     if (items.length >= HISTORY_RECENT_MAX) return;
+    if (!entry?.url || isHome(entry.url) || isHistoryPage(entry.url) || isDownloadsPage(entry.url)) return;
+    seen.add(entry.url);
     items.push({ ...entry, closed: true, showShortcut: i === 0 });
   });
-  for (const entry of sessionHistory) {
+
+  for (const entry of browseHistory) {
     if (items.length >= HISTORY_RECENT_MAX) break;
-    if (items.some((x) => x.url === entry.url)) continue;
-    items.push({ ...entry, closed: false, showShortcut: false });
+    if (!entry?.url || isHome(entry.url) || isHistoryPage(entry.url) || isDownloadsPage(entry.url)) continue;
+    if (seen.has(entry.url)) continue;
+    seen.add(entry.url);
+    items.push({
+      url: entry.url,
+      title: entry.title || entry.url,
+      favicon: entry.favicon || faviconFallback(entry.url),
+      closed: false,
+      showShortcut: false,
+    });
   }
+
   return items;
 }
 
@@ -927,7 +1012,7 @@ function renderHistorySubmenu() {
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "menu-submenu-empty";
-    empty.textContent = "No recent tabs";
+    empty.textContent = "No history yet";
     list.appendChild(empty);
     return;
   }
@@ -1036,17 +1121,428 @@ function renderBookmarksSubmenu() {
   renderIcons(list);
 }
 
+/* ---------- Downloads ---------- */
+let downloadEntries = [];
+let downloadPanelOpen = false;
+let downloadHideTimer = null;
+let downloadIndicatorAcknowledged = true;
+
+function dismissDownloadIndicator() {
+  downloadIndicatorAcknowledged = true;
+  clearTimeout(downloadHideTimer);
+  downloadHideTimer = null;
+  els.downloadPanel?.classList.add("hidden");
+  downloadPanelOpen = false;
+  els.downloadWrap?.classList.add("hidden");
+}
+
+function closeDownloadPanel() {
+  els.downloadPanel?.classList.add("hidden");
+  downloadPanelOpen = false;
+  dismissDownloadIndicator();
+}
+
+function revealDownloadIndicator() {
+  downloadIndicatorAcknowledged = false;
+}
+
+function updateDownloadBtnIcon(entry) {
+  const wrap = els.downloadBtnIcon;
+  if (!wrap) return;
+  if (!entry) {
+    wrap.replaceChildren();
+    wrap.classList.add("menu-recent-fallback");
+    wrap.innerHTML = GLOBE_SVG;
+    return;
+  }
+  fillDownloadIconWrap(wrap, entry);
+}
+
+function downloadProgress(entry) {
+  if (!entry) return 0;
+  if (entry.state === "completed") return 100;
+  if (entry.state === "cancelled" || entry.state === "interrupted") return 0;
+  if (entry.totalBytes > 0) {
+    return Math.min(
+      100,
+      Math.round((entry.receivedBytes / entry.totalBytes) * 100)
+    );
+  }
+  return entry.receivedBytes > 0 ? -1 : 0;
+}
+
+function downloadStateLabel(entry) {
+  if (!entry) return "";
+  if (entry.state === "completed") return "Completed";
+  if (entry.state === "cancelled") return "Cancelled";
+  if (entry.state === "interrupted") return "Failed";
+  const pct = downloadProgress(entry);
+  if (pct < 0) return "Downloading…";
+  return `${pct}%`;
+}
+
+function tabForDownload(entry) {
+  if (!entry) return null;
+  if (entry.webContentsId) {
+    const byId = tabs.find((t) => t.webContentsId === entry.webContentsId);
+    if (byId) return byId;
+  }
+  const ref = entry.sourceUrl || entry.url || "";
+  const host = hostFromUrl(ref);
+  if (host) {
+    for (const t of tabs) {
+      if (isHome(t.url) || isHistoryPage(t.url) || isDownloadsPage(t.url)) continue;
+      if (hostFromUrl(t.url) === host) return t;
+    }
+  }
+  if (entry.state === "progressing") {
+    const a = activeTab();
+    if (a && !isHome(a.url) && !isHistoryPage(a.url) && !isDownloadsPage(a.url)) {
+      return a;
+    }
+  }
+  return null;
+}
+
+function resolveDownloadFavicon(entry) {
+  const tab = tabForDownload(entry);
+  if (tab?.favicon) return tab.favicon;
+  if (entry?.favicon) return entry.favicon;
+  const ref = entry?.sourceUrl || entry?.url || "";
+  return googleFavicon(ref) || faviconFallback(ref) || "";
+}
+
+function fillDownloadIconWrap(wrap, entry) {
+  wrap.replaceChildren();
+  wrap.classList.remove("menu-recent-fallback");
+
+  const candidates = [];
+  const push = (url) => {
+    if (url && !candidates.includes(url)) candidates.push(url);
+  };
+  push(resolveDownloadFavicon(entry));
+  push(googleFavicon(entry?.sourceUrl || entry?.url));
+  push(faviconFallback(entry?.sourceUrl || entry?.url));
+  push(entry?.favicon);
+
+  if (!candidates.length) {
+    wrap.classList.add("menu-recent-fallback");
+    wrap.innerHTML = GLOBE_SVG;
+    return;
+  }
+
+  const img = document.createElement("img");
+  img.className = "menu-recent-icon";
+  img.alt = "";
+  img.referrerPolicy = "no-referrer";
+  let idx = 0;
+  img.onerror = () => {
+    idx += 1;
+    if (idx < candidates.length) {
+      img.src = candidates[idx];
+      return;
+    }
+    wrap.classList.add("menu-recent-fallback");
+    wrap.innerHTML = GLOBE_SVG;
+  };
+  img.src = candidates[0];
+  wrap.appendChild(img);
+}
+
+async function attachDownloadFavicon(info) {
+  const api = window.slopAPI.downloads;
+  if (!info?.id || !api?.setFavicon) return;
+  const entry = { ...info, state: "progressing" };
+  const icon = resolveDownloadFavicon(entry);
+  if (icon) await api.setFavicon(info.id, icon).catch(() => {});
+}
+
+/* Patches entries locally and fires setFavicon without awaiting, so
+ * refreshDownloads needs only one getAll round-trip per change event. */
+function syncDownloadFaviconsFromTabs() {
+  const api = window.slopAPI.downloads;
+  if (!api?.setFavicon) return;
+  for (const entry of downloadEntries) {
+    const tab = tabForDownload(entry);
+    if (!tab?.favicon || tab.favicon === entry.favicon) continue;
+    entry.favicon = tab.favicon;
+    api.setFavicon(entry.id, tab.favicon).catch(() => {});
+  }
+}
+
+async function syncDownloadFaviconsForTab(tab) {
+  if (!tab?.favicon) return;
+  const api = window.slopAPI.downloads;
+  if (!api?.setFavicon) return;
+  let changed = false;
+  for (const entry of downloadEntries) {
+    const owner = tabForDownload(entry);
+    if (owner?.id !== tab.id) continue;
+    if (entry.favicon === tab.favicon) continue;
+    entry.favicon = tab.favicon;
+    changed = true;
+    api.setFavicon(entry.id, tab.favicon).catch(() => {});
+  }
+  if (changed) {
+    updateDownloadChrome();
+    renderDownloadsSubmenu();
+    if (downloadPanelOpen) renderDownloadPanel();
+  }
+}
+
+function setDownloadRingProgress(pct) {
+  const fill = els.downloadRingFill;
+  const ring = els.downloadRing;
+  if (!fill) return;
+
+  if (pct < 0) {
+    ring?.classList.add("indeterminate");
+    fill.style.strokeDasharray = `${DOWNLOAD_RING_C * 0.28} ${DOWNLOAD_RING_C * 0.72}`;
+    fill.style.strokeDashoffset = "0";
+    return;
+  }
+
+  ring?.classList.remove("indeterminate");
+  fill.style.strokeDasharray = `${DOWNLOAD_RING_C} ${DOWNLOAD_RING_C}`;
+  fill.style.strokeDashoffset = String(DOWNLOAD_RING_C * (1 - pct / 100));
+}
+
+function primaryDownloadEntry() {
+  const active = downloadEntries.find((e) => e.state === "progressing");
+  return active || downloadEntries[0] || null;
+}
+
+function updateDownloadChrome() {
+  const wrap = els.downloadWrap;
+  if (!wrap) return;
+
+  const primary = primaryDownloadEntry();
+  setDownloadRingProgress(downloadProgress(primary));
+  updateDownloadBtnIcon(primary);
+
+  if (downloadPanelOpen) {
+    wrap.classList.remove("hidden");
+    return;
+  }
+
+  if (downloadIndicatorAcknowledged || !downloadEntries.length) {
+    wrap.classList.add("hidden");
+    return;
+  }
+
+  wrap.classList.remove("hidden");
+}
+
+async function refreshDownloads() {
+  try {
+    downloadEntries = (await window.slopAPI.downloads.getAll()) || [];
+  } catch (_) {
+    downloadEntries = [];
+  }
+  syncDownloadFaviconsFromTabs();
+  updateDownloadChrome();
+  if (!els.menu.classList.contains("hidden")) renderDownloadsSubmenu();
+  if (downloadPanelOpen) renderDownloadPanel();
+}
+
+function downloadsRecentItems() {
+  return downloadEntries.slice(0, DOWNLOADS_MENU_MAX);
+}
+
+function renderDownloadsSubmenu() {
+  const list = els.downloadsRecentList;
+  if (!list) return;
+  list.replaceChildren();
+  const items = downloadsRecentItems();
+
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "menu-submenu-empty";
+    empty.textContent = "No downloads yet";
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const entry of items) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "menu-item menu-recent";
+    btn.dataset.action =
+      entry.state === "progressing" ? "downloads-open-page" : "downloads-open-file";
+    btn.dataset.id = entry.id;
+    btn.setAttribute("role", "menuitem");
+
+    const iconWrap = document.createElement("span");
+    iconWrap.className = "menu-recent-icon-wrap";
+    fillDownloadIconWrap(iconWrap, entry);
+
+    const label = document.createElement("span");
+    label.className = "menu-recent-label";
+    label.textContent = truncate(entry.filename, 38);
+
+    btn.appendChild(iconWrap);
+    btn.appendChild(label);
+    const state = document.createElement("kbd");
+    state.textContent = downloadStateLabel(entry);
+    btn.appendChild(state);
+    list.appendChild(btn);
+  }
+  renderIcons(list);
+}
+
+function renderDownloadPanel() {
+  const list = els.downloadPanelList;
+  if (!list) return;
+  list.replaceChildren();
+
+  const items = downloadEntries.slice(0, 12);
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "download-panel-empty";
+    empty.textContent = "No downloads yet";
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const entry of items) {
+    const pct = downloadProgress(entry);
+    const row = document.createElement("div");
+    row.className = "download-item";
+    row.dataset.id = entry.id;
+
+    const head = document.createElement("div");
+    head.className = "download-item-head";
+
+    const headMain = document.createElement("div");
+    headMain.className = "download-item-head-main";
+
+    const iconWrap = document.createElement("span");
+    iconWrap.className = "download-item-icon-wrap";
+    fillDownloadIconWrap(iconWrap, entry);
+
+    const name = document.createElement("span");
+    name.className = "download-item-name";
+    name.title = entry.filename;
+    name.textContent = entry.filename;
+
+    headMain.appendChild(iconWrap);
+    headMain.appendChild(name);
+
+    const size = document.createElement("span");
+    size.className = "download-item-size";
+    size.textContent = formatByteRange(entry.receivedBytes, entry.totalBytes);
+
+    head.appendChild(headMain);
+    head.appendChild(size);
+
+    const track = document.createElement("div");
+    track.className = "download-item-track";
+    const bar = document.createElement("div");
+    bar.className = "download-item-bar";
+    if (entry.state === "completed") bar.classList.add("done");
+    else if (entry.state === "cancelled" || entry.state === "interrupted") {
+      bar.classList.add("error");
+    }
+    bar.style.width =
+      pct < 0 ? "35%" : `${Math.max(entry.state === "completed" ? 100 : pct, 0)}%`;
+    track.appendChild(bar);
+
+    const meta = document.createElement("div");
+    meta.className = "download-item-meta";
+
+    const pctLabel = document.createElement("span");
+    pctLabel.className = "download-item-pct";
+    pctLabel.textContent = downloadStateLabel(entry);
+
+    const actions = document.createElement("div");
+    actions.className = "download-item-actions";
+
+    if (entry.state === "progressing") {
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.dataset.action = "downloads-cancel";
+      cancelBtn.dataset.id = entry.id;
+      cancelBtn.textContent = "Cancel";
+      actions.appendChild(cancelBtn);
+    } else if (entry.state === "completed") {
+      const openBtn = document.createElement("button");
+      openBtn.type = "button";
+      openBtn.dataset.action = "downloads-open-file";
+      openBtn.dataset.id = entry.id;
+      openBtn.textContent = "Open";
+      actions.appendChild(openBtn);
+
+      const folderBtn = document.createElement("button");
+      folderBtn.type = "button";
+      folderBtn.dataset.action = "downloads-show-folder";
+      folderBtn.dataset.id = entry.id;
+      folderBtn.textContent = "Show";
+      actions.appendChild(folderBtn);
+    }
+
+    meta.appendChild(pctLabel);
+    meta.appendChild(actions);
+
+    row.appendChild(head);
+    row.appendChild(track);
+    row.appendChild(meta);
+    list.appendChild(row);
+  }
+}
+
+function toggleDownloadPanel(force) {
+  const panel = els.downloadPanel;
+  const wrap = els.downloadWrap;
+  if (!panel || !wrap) return;
+
+  const show = force ?? panel.classList.contains("hidden");
+
+  if (show) {
+    downloadPanelOpen = true;
+    wrap.classList.remove("hidden");
+    toggleMenu(false);
+    toggleSlopPanel(false);
+    refreshDownloads();
+    panel.classList.remove("hidden");
+    return;
+  }
+
+  closeDownloadPanel();
+}
+
+els.downloadBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleDownloadPanel();
+});
+
+els.downloadPanel?.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-action]");
+  if (!btn) return;
+  const action = btn.dataset.action;
+  const id = btn.dataset.id;
+  if (action === "downloads-cancel" && id) {
+    window.slopAPI.downloads.cancel(id).catch(() => {});
+  } else if (action === "downloads-open-file" && id) {
+    window.slopAPI.downloads.open(id).catch(() => {});
+  } else if (action === "downloads-show-folder" && id) {
+    window.slopAPI.downloads.showInFolder(id).catch(() => {});
+  }
+});
+
 /* ---------- Menu (dropdown) ---------- */
 function toggleMenu(force) {
   const show = force ?? els.menu.classList.contains("hidden");
   if (show) {
     toggleSlopPanel(false);
+    closeDownloadPanel();
     renderHistorySubmenu();
     renderBookmarksSubmenu();
+    renderDownloadsSubmenu();
     renderIcons(els.menu);
   } else {
     els.historySubWrap?.classList.remove("sub-open");
     els.bookmarksSubWrap?.classList.remove("sub-open");
+    els.downloadsSubWrap?.classList.remove("sub-open");
   }
   els.menu.classList.toggle("hidden", !show);
 }
@@ -1056,27 +1552,34 @@ els.menuBtn.onclick = (e) => {
   toggleMenu();
 };
 
-els.historySubWrap?.addEventListener("mouseenter", () => {
-  renderHistorySubmenu();
-  els.historySubWrap.classList.add("sub-open");
-});
-els.historySubWrap?.addEventListener("mouseleave", () => {
-  els.historySubWrap.classList.remove("sub-open");
-});
+function wireSubmenuHover(wrap, onEnter) {
+  if (!wrap) return;
+  let closeTimer = null;
+  wrap.addEventListener("mouseenter", () => {
+    clearTimeout(closeTimer);
+    closeTimer = null;
+    onEnter?.();
+    wrap.classList.add("sub-open");
+  });
+  wrap.addEventListener("mouseleave", () => {
+    closeTimer = setTimeout(() => {
+      wrap.classList.remove("sub-open");
+    }, 120);
+  });
+}
 
-els.bookmarksSubWrap?.addEventListener("mouseenter", () => {
-  renderBookmarksSubmenu();
-  els.bookmarksSubWrap.classList.add("sub-open");
-});
-els.bookmarksSubWrap?.addEventListener("mouseleave", () => {
-  els.bookmarksSubWrap.classList.remove("sub-open");
+wireSubmenuHover(els.historySubWrap, () => renderHistorySubmenu());
+wireSubmenuHover(els.bookmarksSubWrap, () => renderBookmarksSubmenu());
+wireSubmenuHover(els.downloadsSubWrap, () => {
+  dismissDownloadIndicator();
+  renderDownloadsSubmenu();
 });
 
 els.menu.addEventListener("click", (e) => {
   const item = e.target.closest(".menu-item");
   if (!item) return;
   const action = item.dataset.action;
-  if (action === "history" || action === "bookmarks") return;
+  if (action === "history" || action === "bookmarks" || action === "downloads") return;
   if (action === "bookmarks-this-tab") {
     bookmarkThisTab();
     toggleMenu(false);
@@ -1116,12 +1619,22 @@ els.menu.addEventListener("click", (e) => {
     toggleMenu(false);
     return;
   }
+  if (action === "downloads-open-page") {
+    openDownloadsPage();
+    toggleMenu(false);
+    return;
+  }
+  if (action === "downloads-open-file") {
+    dismissDownloadIndicator();
+    const id = item.dataset.id;
+    if (id) window.slopAPI.downloads.open(id).catch(() => {});
+    toggleMenu(false);
+    return;
+  }
   if (action === "newtab") createTab(HOME);
   else if (action === "newwindow") window.slopAPI.newWindow({});
   else if (action === "newprivate") createTab(HOME, { private: true });
-  else if (action === "downloads") {
-    /* Downloads page — placeholder. */
-  } else if (action === "reload") reloadActiveTab();
+  else if (action === "reload") reloadActiveTab();
   else if (action === "cookies") openCookieManager();
   else if (action === "togglesidebar")
     setRailCollapsed(!document.body.classList.contains("rail-collapsed"));
@@ -1266,6 +1779,12 @@ document.addEventListener("click", (e) => {
     toggleMenu(false);
   }
   if (
+    downloadPanelOpen &&
+    !e.target.closest("#downloadWrap")
+  ) {
+    closeDownloadPanel();
+  }
+  if (
     !els.slopPanel.classList.contains("hidden") &&
     !e.target.closest("#slopWrap")
   ) {
@@ -1277,6 +1796,8 @@ document.addEventListener("keydown", (e) => {
     toggleMenu(false);
     els.historySubWrap?.classList.remove("sub-open");
     els.bookmarksSubWrap?.classList.remove("sub-open");
+    els.downloadsSubWrap?.classList.remove("sub-open");
+    closeDownloadPanel();
     toggleSlopPanel(false);
     toggleCookieManager(false);
   }
@@ -1303,6 +1824,8 @@ function handleShortcut(key) {
     openHistoryPage();
   } else if (key === "shift+t") {
     reopenClosedTab();
+  } else if (key === "j") {
+    openDownloadsPage();
   }
 }
 
@@ -1322,6 +1845,9 @@ window.addEventListener("keydown", (e) => {
   } else if (key === "t" && e.shift) {
     e.preventDefault();
     handleShortcut("shift+t");
+  } else if (key === "j" && !e.shift) {
+    e.preventDefault();
+    handleShortcut("j");
   } else if (["t", "w", "l", "r"].includes(key)) {
     e.preventDefault();
     handleShortcut(key);
@@ -1864,10 +2390,25 @@ renderIcons();
 createTab(HOME);
 refreshBrowseHistory();
 refreshBookmarks();
+refreshDownloads();
 
 window.slopAPI.onHistoryChanged(() => {
   refreshBrowseHistory();
   for (const tab of tabs) {
     if (isHistoryPage(tab.url)) injectHistoryPage(tab);
   }
+});
+
+window.slopAPI.onDownloadChanged(() => {
+  refreshDownloads();
+  for (const tab of tabs) {
+    if (isDownloadsPage(tab.url)) injectDownloadsPage(tab);
+  }
+});
+
+window.slopAPI.onDownloadStarted((info) => {
+  revealDownloadIndicator();
+  attachDownloadFavicon(info)
+    .then(() => refreshDownloads())
+    .catch(() => {});
 });

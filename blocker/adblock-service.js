@@ -19,7 +19,7 @@ const {
 } = require("./brave-filter-urls");
 
 /** Bump when list set or engine build logic changes (invalidates cache). */
-const ENGINE_VERSION = 6;
+const ENGINE_VERSION = 7;
 
 const EMPTY_COSMETICS = {
   hide_selectors: [],
@@ -29,6 +29,8 @@ const EMPTY_COSMETICS = {
   generichide: false,
 };
 
+/* Keys are Electron's resourceType values (camelCase: xhr, webSocket, …),
+ * values are adblock-rs request types. */
 const RESOURCE_TYPE_MAP = {
   mainFrame: "main_frame",
   subFrame: "sub_frame",
@@ -37,12 +39,16 @@ const RESOURCE_TYPE_MAP = {
   image: "image",
   font: "font",
   object: "object",
-  xmlhttprequest: "xmlhttprequest",
+  xhr: "xmlhttprequest",
   ping: "ping",
+  cspReport: "csp_report",
   media: "media",
-  websocket: "websocket",
+  webSocket: "websocket",
   other: "other",
 };
+
+/** Filter lists older than this get refreshed in the background. */
+const LIST_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function partitionFromSession(sess) {
   try {
@@ -58,6 +64,12 @@ function partitionFromSession(sess) {
 
 function isIntegrationPartition(partition) {
   return /slopbrowser-side/i.test(partition);
+}
+
+function readSerializedEngine(filePath) {
+  const buf = fs.readFileSync(filePath);
+  // adblock-rs deserialize() expects an ArrayBuffer, not a Node Buffer.
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
 function listCacheName(url) {
@@ -89,8 +101,8 @@ class AdblockService {
     this.loading = false;
     this.enabled = true;
     this.totalBlocked = 0;
-    /** @type {Set<import('electron').Session>} */
-    this.hookedSessions = new Set();
+    /** WeakSet so destroyed sessions (private tabs) can be GC'd. */
+    this.hookedSessions = new WeakSet();
     this.cacheDir = "";
     this.configPath = "";
     this.enginePath = "";
@@ -116,6 +128,33 @@ class AdblockService {
     } finally {
       this.loading = false;
     }
+    if (this.ready) this.maybeScheduleListRefresh();
+  }
+
+  listPathFor(url) {
+    return path.join(this.listsDir, listCacheName(url) + ".txt");
+  }
+
+  listIsStale(dest) {
+    try {
+      return Date.now() - fs.statSync(dest).mtimeMs > LIST_MAX_AGE_MS;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /* Lists were previously downloaded once and never refreshed; rebuild the
+   * engine in the background when any list is older than a week. */
+  maybeScheduleListRefresh() {
+    const stale = this.filterUrls().some((url) =>
+      this.listIsStale(this.listPathFor(url))
+    );
+    if (!stale) return;
+    setTimeout(() => {
+      this.buildEngine().catch((err) =>
+        console.warn("Adblock list refresh failed:", err.message)
+      );
+    }, 30_000);
   }
 
   loadConfig() {
@@ -194,8 +233,9 @@ class AdblockService {
     const res = this.getCosmetics(url);
 
     if (res.injected_script) {
+      const wrapped = `(function(){if(window.__slopCosmeticsBoot)return;window.__slopCosmeticsBoot=true;\n${res.injected_script}\n})();`;
       try {
-        await contents.executeJavaScript(res.injected_script, true);
+        await contents.executeJavaScript(wrapped, true);
       } catch (_) {}
     }
 
@@ -224,7 +264,7 @@ class AdblockService {
       try {
         const filterSet = new adblock.FilterSet(false);
         this.engine = new adblock.Engine(filterSet, false);
-        this.engine.deserialize(fs.readFileSync(this.enginePath));
+        this.engine.deserialize(readSerializedEngine(this.enginePath));
         const resources = await this.loadResources();
         if (resources.length) this.engine.useResources(resources);
         console.log("Adblock engine loaded from cache.");
@@ -254,11 +294,18 @@ class AdblockService {
 
   async ensureFilterLists() {
     for (const url of this.filterUrls()) {
-      const dest = path.join(this.listsDir, listCacheName(url) + ".txt");
-      if (fs.existsSync(dest)) continue;
+      const dest = this.listPathFor(url);
+      const exists = fs.existsSync(dest);
+      if (exists && !this.listIsStale(dest)) continue;
       console.log("Downloading filter list:", url);
-      const text = await this.downloadText(url);
-      fs.writeFileSync(dest, text, "utf8");
+      try {
+        const text = await this.downloadText(url);
+        fs.writeFileSync(dest, text, "utf8");
+      } catch (err) {
+        // Keep serving the stale copy if the refresh fails offline.
+        if (!exists) throw err;
+        console.warn("Filter list refresh failed:", url, err.message);
+      }
     }
   }
 
@@ -359,14 +406,17 @@ class AdblockService {
     }
     this.addLocalFilters(filterSet);
 
-    this.engine = new adblock.Engine(filterSet, true);
+    // Build into a local engine first: requests keep hitting the old engine
+    // until the new one is fully configured (no half-initialized window).
+    const engine = new adblock.Engine(filterSet, true);
     const resources = await this.loadResources();
     if (resources.length) {
-      this.engine.useResources(resources);
+      engine.useResources(resources);
       console.log(`Loaded ${resources.length} redirect/script resources.`);
     }
+    this.engine = engine;
 
-    fs.writeFileSync(this.enginePath, Buffer.from(this.engine.serialize()));
+    fs.writeFileSync(this.enginePath, Buffer.from(engine.serialize()));
     this.saveConfig();
     console.log("Adblock engine built and cached.");
   }
@@ -392,12 +442,21 @@ class AdblockService {
       return { action: "allow" };
     }
 
+    // Never block top-level document loads (matches Brave/uBO behavior);
+    // a bad $document match would white-screen the tab.
+    if (details.resourceType === "mainFrame") {
+      return { action: "allow" };
+    }
+
     const type = RESOURCE_TYPE_MAP[details.resourceType] || "other";
-    const sourceUrl =
-      details.referrer ||
-      details.initiator ||
-      details.documentUrl ||
-      details.url;
+
+    // Frame URL gives correct first-/third-party classification; referrer
+    // is often stripped and Electron has no `initiator` on this event.
+    let frameUrl = "";
+    try {
+      frameUrl = details.frame?.url || "";
+    } catch (_) {}
+    const sourceUrl = frameUrl || details.referrer || details.url;
 
     try {
       const result = this.engine.check(details.url, sourceUrl, type, true);

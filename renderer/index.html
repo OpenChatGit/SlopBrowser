@@ -120,6 +120,40 @@
       </div>
 
       <div class="tb-side tb-right">
+        <div id="downloadWrap" class="download-wrap hidden">
+          <button
+            id="downloadBtn"
+            class="nav-btn download-btn"
+            title="Downloads"
+            aria-haspopup="true"
+          >
+            <span class="download-btn-inner">
+              <svg class="download-ring" viewBox="0 0 36 36" aria-hidden="true">
+                <circle
+                  class="download-ring-bg"
+                  cx="18"
+                  cy="18"
+                  r="15"
+                  fill="none"
+                  stroke-width="2.5"
+                />
+                <circle
+                  class="download-ring-fill"
+                  cx="18"
+                  cy="18"
+                  r="15"
+                  fill="none"
+                  stroke-width="2.5"
+                />
+              </svg>
+              <span id="downloadBtnIcon" class="download-btn-icon"></span>
+            </span>
+          </button>
+          <div id="downloadPanel" class="download-panel hidden" role="menu">
+            <div class="download-panel-header">Downloads</div>
+            <div id="downloadPanelList" class="download-panel-list"></div>
+          </div>
+        </div>
         <div id="menuWrap">
           <button id="menuBtn" class="nav-btn" title="Menu" aria-haspopup="true">
             <i data-lucide="menu"></i>
@@ -158,7 +192,7 @@
                   ><kbd>Ctrl+H</kbd>
                 </button>
                 <div class="menu-sep"></div>
-                <div class="menu-submenu-label">Recent tabs</div>
+                <div class="menu-submenu-label">Recent history</div>
                 <div id="historyRecentList" class="menu-submenu-list"></div>
               </div>
             </div>
@@ -197,9 +231,32 @@
                 <div id="bookmarksSavedList" class="menu-submenu-list"></div>
               </div>
             </div>
-            <button class="menu-item" data-action="downloads" role="menuitem">
-              <i data-lucide="download"></i><span>Downloads</span><kbd>Ctrl+J</kbd>
-            </button>
+            <div class="menu-sub-wrap" id="downloadsSubWrap">
+              <button
+                type="button"
+                class="menu-item menu-sub"
+                data-action="downloads"
+                role="menuitem"
+                aria-haspopup="true"
+              >
+                <i data-lucide="download"></i><span>Downloads</span>
+                <i data-lucide="chevron-left" class="menu-chevron"></i>
+              </button>
+              <div id="downloadsSubmenu" class="menu-submenu" role="menu">
+                <button
+                  type="button"
+                  class="menu-item"
+                  data-action="downloads-open-page"
+                  role="menuitem"
+                >
+                  <i data-lucide="download"></i><span>Open downloads page</span
+                  ><kbd>Ctrl+J</kbd>
+                </button>
+                <div class="menu-sep"></div>
+                <div class="menu-submenu-label">Recent downloads</div>
+                <div id="downloadsRecentList" class="menu-submenu-list"></div>
+              </div>
+            </div>
             <div class="menu-sep"></div>
             <button class="menu-item" data-action="reload" role="menuitem">
               <i data-lucide="rotate-cw"></i><span>Reload</span><kbd>Ctrl+R</kbd>

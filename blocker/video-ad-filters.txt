@@ -1,6 +1,45 @@
-! SlopBrowser — video / in-stream ad fixes (Brave parity)
-! Requires brave-yt-sabr-fix + uBlock scriptlets from engine resources.
+! SlopBrowser — YouTube in-stream / player ad fixes (Brave parity)
+! Requires brave-yt-sabr-fix + trusted scriptlets from engine resources.
+! Duplicated here so rules stay active even if a remote list update lags.
 
 www.youtube.com,youtube.com,m.youtube.com,music.youtube.com,tv.youtube.com,youtubekids.com,youtube-nocookie.com##+js(brave-yt-sabr-fix)
 www.youtube.com,youtube.com,m.youtube.com,music.youtube.com,tv.youtube.com,youtubekids.com,youtube-nocookie.com##+js(json-prune, playerAds adPlacements adSlots adBreakHeartbeatParams adBreakParams playerAdParams)
 www.youtube.com,youtube.com,m.youtube.com,music.youtube.com,tv.youtube.com,youtubekids.com,youtube-nocookie.com##+js(json-prune, playerAds adPlacements adSlots adBreakHeartbeatParams, , playerResponse)
+
+youtube.com,youtubekids.com,youtube-nocookie.com##+js(set, ytInitialPlayerResponse.playerAds, undefined)
+youtube.com,youtubekids.com,youtube-nocookie.com##+js(set, ytInitialPlayerResponse.adPlacements, undefined)
+youtube.com,youtubekids.com,youtube-nocookie.com##+js(set, ytInitialPlayerResponse.adSlots, undefined)
+youtube.com,youtubekids.com,youtube-nocookie.com##+js(set, playerResponse.adPlacements, undefined)
+
+www.youtube.com##+js(trusted-replace-xhr-response, /"adPlacements.*?([A-Z]"\}|"\}{2\,4})\}\]\,/, , /playlist\?list=|player\?|watch\?v=|youtubei\/v1\/player/)
+www.youtube.com##+js(trusted-replace-xhr-response, /"adPlacements.*?("adSlots"|"adBreakHeartbeatParams")/gms, $1, youtubei/v1/player)
+tv.youtube.com##+js(trusted-replace-xhr-response, '"adPlacements"', '"no_ads"', /playlist\?list=|player\?|watch\?v=|youtubei\/v1\/player/)
+www.youtube.com##+js(trusted-replace-fetch-response, /"adPlacements.*?([A-Z]"\}|"\}{2\,4})\}\]\,/, , player?)
+
+www.youtube.com##+js(json-prune-fetch-response, playerAds adPlacements adSlots playerResponse.playerAds playerResponse.adPlacements playerResponse.adSlots, , propsToMatch, /playlist?)
+www.youtube.com##+js(json-prune-fetch-response, playerAds adPlacements adSlots playerResponse.playerAds playerResponse.adPlacements playerResponse.adSlots [].playerResponse.adPlacements [].playerResponse.playerAds [].playerResponse.adSlots, , propsToMatch, /player?)
+www.youtube.com##+js(json-prune-xhr-response, playerAds adPlacements adSlots playerResponse.playerAds playerResponse.adPlacements playerResponse.adSlots [].playerResponse.adPlacements [].playerResponse.playerAds [].playerResponse.adSlots, , propsToMatch, /\/player(?:\?.+)?$/)
+
+m.youtube.com,music.youtube.com,youtubekids.com,youtube-nocookie.com##+js(json-prune, playerResponse.adPlacements playerResponse.playerAds playerResponse.adSlots adPlacements playerAds adSlots important)
+
+radioonline.com.pt,emisora.org.es,radio.co.dk,radios.co.at,tv.youtube.com,www.youtube.com,m.youtube.com##+js(brave-disable-pageview-api)
+
+! Network — ad/tracking endpoints on YouTube
+||googleads.g.doubleclick.net^$domain=youtube.com
+||youtube.com/api/stats/ads^
+||youtube.com/pagead/
+||youtube.com/ptracking
+||youtube.com/get_midroll_
+||youtube.com/get_video_ads?
+||youtube.com/youtubei/v1/log_event?
+
+! Cosmetic: in-feed / sidebar promoted content
+youtube.com##ytd-rich-item-renderer:has(ytd-display-ad-renderer)
+youtube.com##ytd-video-renderer:has(ytd-ad-slot-renderer)
+youtube.com##ytd-compact-promoted-video-renderer
+youtube.com##ytd-promoted-sparkles-web-renderer
+youtube.com##ytd-ad-slot-renderer
+youtube.com##ytd-banner-promo-renderer
+youtube.com##ytd-statement-banner-renderer
+youtube.com##ytd-in-feed-ad-layout-renderer
+youtube.com##ytd-display-ad-renderer

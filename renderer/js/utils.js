@@ -1,5 +1,5 @@
 /** URL, favicon, icon, and string helpers. */
-import { HOME, HISTORY } from "./shared.js";
+import { HOME, HISTORY, DOWNLOADS, HISTORY_DISPLAY, DOWNLOADS_DISPLAY } from "./shared.js";
 
 export function isHome(url) {
   if (!url) return true;
@@ -22,8 +22,19 @@ export function isHistoryPage(url) {
   }
 }
 
+export function isDownloadsPage(url) {
+  if (!url) return false;
+  try {
+    return new URL(url).pathname === new URL(DOWNLOADS).pathname;
+  } catch (_) {
+    const base = DOWNLOADS.split("?")[0];
+    return url === DOWNLOADS || url.startsWith(base);
+  }
+}
+
 export function displayURL(url) {
-  if (isHistoryPage(url)) return "slop://history";
+  if (isHistoryPage(url)) return HISTORY_DISPLAY;
+  if (isDownloadsPage(url)) return DOWNLOADS_DISPLAY;
   return url;
 }
 
@@ -45,6 +56,28 @@ export function faviconFallback(url) {
   }
 }
 
+export function googleFavicon(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    return (
+      "https://www.google.com/s2/favicons?domain=" +
+      encodeURIComponent(u.hostname) +
+      "&sz=64"
+    );
+  } catch (_) {
+    return "";
+  }
+}
+
+export function hostFromUrl(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch (_) {
+    return "";
+  }
+}
+
 export function escapeHTML(s) {
   return String(s)
     .replaceAll("&", "&amp;")
@@ -56,6 +89,21 @@ export function escapeHTML(s) {
 export function truncate(s, max = 80) {
   const t = String(s ?? "");
   return t.length <= max ? t : t.slice(0, max) + "…";
+}
+
+export function formatBytes(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n < 0) return "—";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+export function formatByteRange(received, total) {
+  if (total > 0) return `${formatBytes(received)} / ${formatBytes(total)}`;
+  if (received > 0) return formatBytes(received);
+  return "—";
 }
 
 export function renderIcons(root) {

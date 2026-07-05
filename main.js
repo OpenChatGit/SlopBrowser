@@ -6,6 +6,8 @@ const path = require("path");
 const { getBuildInfo } = require("./build-info");
 const { HistoryStore } = require("./stores/history-store");
 const { BookmarkStore } = require("./stores/bookmark-store");
+const { DownloadStore } = require("./stores/download-store");
+const { createDownloadManager } = require("./main/download-manager");
 const { AdblockService } = require("./blocker/adblock-service");
 const { createWindow: createWindowFactory } = require("./main/window");
 const { configureIntegrationSessions } = require("./main/session-config");
@@ -16,6 +18,10 @@ const isDev = process.argv.includes("--dev");
 const adblockService = new AdblockService();
 const historyStore = new HistoryStore();
 const bookmarkStore = new BookmarkStore();
+const downloadStore = new DownloadStore();
+const downloadManager = createDownloadManager(downloadStore, () =>
+  app.getPath("downloads")
+);
 let cachedBuildInfo = null;
 
 const createWindow = createWindowFactory({ isDev });
@@ -41,6 +47,7 @@ registerIpc({
   adblockService,
   historyStore,
   bookmarkStore,
+  downloadManager,
   createWindow,
   getCachedBuildInfo: () => cachedBuildInfo,
   setCachedBuildInfo: (info) => {
@@ -48,12 +55,17 @@ registerIpc({
   },
 });
 
-registerWebviewGuestHandlers(app, adblockService);
+registerWebviewGuestHandlers(
+  app,
+  adblockService,
+  downloadManager.attachSessionDownloadHandler
+);
 
 app.whenReady().then(() => {
   cachedBuildInfo = getBuildInfo(app);
   historyStore.init(app.getPath("userData"));
   bookmarkStore.init(app.getPath("userData"));
+  downloadStore.init(app.getPath("userData"));
   const { sesFromPartition } = require("./main/session-config");
   adblockService.ensureSession(sesFromPartition("persist:slopbrowser"));
   configureIntegrationSessions();
@@ -80,4 +92,5 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   historyStore.save();
   bookmarkStore.save();
+  downloadStore.save();
 });

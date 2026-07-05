@@ -20,6 +20,8 @@ let maximizedCb = null;
 let adBlockedCb = null;
 let zoomChangedCb = null;
 let historyChangedCb = null;
+let downloadChangedCb = null;
+let downloadStartedCb = null;
 ipcRenderer.on("slop:openURL", (_e, url) => openURLCb?.(url));
 ipcRenderer.on("slop:openSideURL", (_e, payload) => openSideURLCb?.(payload));
 ipcRenderer.on("slop:shortcut", (_e, key) => shortcutCb?.(key));
@@ -27,6 +29,8 @@ ipcRenderer.on("window:maximized", (_e, isMax) => maximizedCb?.(isMax));
 ipcRenderer.on("slop:adBlocked", (_e, payload) => adBlockedCb?.(payload));
 ipcRenderer.on("slop:zoomChanged", (_e, payload) => zoomChangedCb?.(payload));
 ipcRenderer.on("slop:historyChanged", () => historyChangedCb?.());
+ipcRenderer.on("slop:downloadChanged", () => downloadChangedCb?.());
+ipcRenderer.on("slop:downloadStarted", (_e, payload) => downloadStartedCb?.(payload));
 
 const chromeUA = (() => {
   const v = process.versions.chrome || "131.0.0.0";
@@ -47,10 +51,14 @@ const newTabURL = buildInfo.buildId
 const historyURL = pathToFileURL(
   path.join(__dirname, "renderer", "history.html")
 ).href;
+const downloadsURL = pathToFileURL(
+  path.join(__dirname, "renderer", "downloads.html")
+).href;
 
 contextBridge.exposeInMainWorld("slopAPI", {
   newTabURL,
   historyURL,
+  downloadsURL,
   buildId: buildInfo.buildId,
   version: buildInfo.version,
 
@@ -124,6 +132,26 @@ contextBridge.exposeInMainWorld("slopAPI", {
 
   onHistoryChanged: (cb) => {
     historyChangedCb = cb;
+  },
+
+  onDownloadChanged: (cb) => {
+    downloadChangedCb = cb;
+  },
+
+  onDownloadStarted: (cb) => {
+    downloadStartedCb = cb;
+  },
+
+  downloads: {
+    getAll: () => ipcRenderer.invoke("downloads:getAll"),
+    open: (id) => ipcRenderer.invoke("downloads:open", id),
+    showInFolder: (id) => ipcRenderer.invoke("downloads:showInFolder", id),
+    cancel: (id) => ipcRenderer.invoke("downloads:cancel", id),
+    setFavicon: (id, favicon) =>
+      ipcRenderer.invoke("downloads:setFavicon", id, favicon),
+    remove: (id) => ipcRenderer.invoke("downloads:remove", id),
+    removeMany: (ids) => ipcRenderer.invoke("downloads:removeMany", ids),
+    clear: () => ipcRenderer.invoke("downloads:clear"),
   },
 
   history: {

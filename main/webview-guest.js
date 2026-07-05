@@ -14,7 +14,7 @@ function clampZoomFactor(factor) {
 /** host webContents id -> Set of guest webview webContents ids */
 const hostWebviewIds = new Map();
 
-function registerWebviewGuestHandlers(app, adblockService) {
+function registerWebviewGuestHandlers(app, adblockService, attachDownloadHandler) {
   app.on("web-contents-created", (_e, contents) => {
     if (contents.getType() !== "webview") return;
 
@@ -44,6 +44,7 @@ function registerWebviewGuestHandlers(app, adblockService) {
 
     applyChromeUserAgent(contents);
     adblockService.ensureSession(contents.session);
+    attachDownloadHandler?.(contents.session);
 
     contents.on("zoom-changed", () => {
       if (contents.isDestroyed()) return;
@@ -111,6 +112,11 @@ function registerWebviewGuestHandlers(app, adblockService) {
       if (key === "h" && !input.shift) {
         event.preventDefault();
         contents.hostWebContents?.send("slop:shortcut", "h");
+        return;
+      }
+      if (key === "j" && !input.shift) {
+        event.preventDefault();
+        contents.hostWebContents?.send("slop:shortcut", "j");
         return;
       }
       if (key === "t" && input.shift) {

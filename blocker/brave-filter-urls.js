@@ -38,6 +38,7 @@ module.exports.BRAVE_DEFAULT_URLS = [
 
 /** Brave optional YouTube lists (not in default_enabled catalog, but Shields uses them). */
 module.exports.BRAVE_YOUTUBE_URLS = [
+  "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/experimental.txt",
   "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/yt-distracting.txt",
   "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/yt-recommended.txt",
   "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/yt-shorts.txt",

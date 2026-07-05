@@ -1,8 +1,10 @@
 /** Shared constants, DOM refs, and mutable renderer state. */
 export const HOME = window.slopAPI.newTabURL;
 export const HISTORY = window.slopAPI.historyURL;
+export const DOWNLOADS = window.slopAPI.downloadsURL;
 export const PARTITION = window.slopAPI.partition;
 export const HISTORY_DISPLAY = "slop://history";
+export const DOWNLOADS_DISPLAY = "slop://downloads";
 export const HOME_ADDRESS_PLACEHOLDER = "Search the web";
 export const DEFAULT_ADDRESS_PLACEHOLDER = "Search or enter address";
 export const CHROME_UA = window.slopAPI.chromeUserAgent;
@@ -25,9 +27,12 @@ export const ZOOM_MAX = 2.0;
 export const ZOOM_DEFAULT = 1.0;
 
 export const HISTORY_MAX = 100;
-export const HISTORY_RECENT_MAX = 8;
+export const HISTORY_RECENT_MAX = 6;
 export const BROWSE_HISTORY_MAX = 2000;
 export const BOOKMARKS_MENU_MAX = 12;
+export const DOWNLOADS_MENU_MAX = 6;
+export const DOWNLOAD_RING_R = 15;
+export const DOWNLOAD_RING_C = 2 * Math.PI * DOWNLOAD_RING_R;
 
 export const SIDE_PANEL_MIN_W = 360;
 export const SIDE_PANEL_MAX_RATIO = 0.5;
@@ -64,6 +69,15 @@ export const els = {
   bookmarksThisTab: document.getElementById("bookmarksThisTab"),
   bookmarksAllTabs: document.getElementById("bookmarksAllTabs"),
   bookmarksSavedList: document.getElementById("bookmarksSavedList"),
+  downloadWrap: document.getElementById("downloadWrap"),
+  downloadBtn: document.getElementById("downloadBtn"),
+  downloadBtnIcon: document.getElementById("downloadBtnIcon"),
+  downloadRing: document.querySelector("#downloadBtn .download-ring"),
+  downloadRingFill: document.querySelector("#downloadBtn .download-ring-fill"),
+  downloadPanel: document.getElementById("downloadPanel"),
+  downloadPanelList: document.getElementById("downloadPanelList"),
+  downloadsSubWrap: document.getElementById("downloadsSubWrap"),
+  downloadsRecentList: document.getElementById("downloadsRecentList"),
   cookieOverlay: document.getElementById("cookieOverlay"),
   cookiePanel: document.getElementById("cookiePanel"),
   cookieClose: document.getElementById("cookieClose"),

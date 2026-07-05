@@ -16,6 +16,7 @@ function registerIpc(deps) {
     adblockService,
     historyStore,
     bookmarkStore,
+    downloadManager,
     createWindow,
     getCachedBuildInfo,
     setCachedBuildInfo,
@@ -181,6 +182,8 @@ function registerIpc(deps) {
     return true;
   });
   ipcMain.handle("bookmarks:toggle", (_e, entry) => bookmarkStore.toggle(entry));
+
+  downloadManager.registerIpc(ipcMain);
 
   ipcMain.handle("webview:setBackground", (_e, webContentsId) => {
     const wc = webContents.fromId(webContentsId);
