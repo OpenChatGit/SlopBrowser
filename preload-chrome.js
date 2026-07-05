@@ -132,6 +132,8 @@ contextBridge.exposeInMainWorld("slopAPI", {
     remove: (url) => ipcRenderer.invoke("history:remove", url),
     removeEntry: (url, visitedAt) =>
       ipcRenderer.invoke("history:removeEntry", url, visitedAt),
+    removeEntries: (entries) =>
+      ipcRenderer.invoke("history:removeEntries", entries),
     clear: () => ipcRenderer.invoke("history:clear"),
   },
 

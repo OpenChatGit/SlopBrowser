@@ -53,6 +53,13 @@ try {
       clear: () => ipcRenderer.invoke("history:clear"),
     },
   });
+
+  // Fallback for file:// pages when direct IPC from the guest is unavailable.
+  contextBridge.exposeInMainWorld("slopHistoryBridge", {
+    send(op, data) {
+      ipcRenderer.sendToHost("slop:history", { op, data: data ?? null });
+    },
+  });
 } catch (_) {}
 
 const STYLE_ID = "slop-cosmetic-css";
@@ -108,8 +115,23 @@ function injectPageScript(code) {
   }
 }
 
+function isInternalPage(href = location.href) {
+  return (
+    !href ||
+    href === "about:blank" ||
+    href.startsWith("file:") ||
+    href.startsWith("chrome:")
+  );
+}
+
 function applyDarkBase() {
   try {
+    const href = location.href;
+    if (!isInternalPage(href)) {
+      document.getElementById(DARK_BASE_ID)?.remove();
+      document.documentElement?.style.removeProperty("background-color");
+      return;
+    }
     const root = document.documentElement;
     if (root) root.style.backgroundColor = "#0e0f13";
     let el = document.getElementById(DARK_BASE_ID);
@@ -496,8 +518,6 @@ async function applyCosmetics() {
     lastScriptletKey = scriptKey;
     injectScriptlet(res.injected_script);
   }
-
-  applyDarkBase();
 
   runProceduralFilters();
 

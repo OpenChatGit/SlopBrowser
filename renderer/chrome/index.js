@@ -1,54 +1,64 @@
-/*
- * SlopBrowser - Renderer SOURCE (build with: node scripts/build-chrome-module.js)
- * Runtime entry: renderer/main.js → chrome/index.js + js/shared.js + js/utils.js
+/**
+ * Browser chrome — tab UI, toolbar, menus, side rail.
+ * Generated from renderer.js — do not edit; run npm run build:chrome.
  */
-"use strict";
+import {
+  HOME,
+  HISTORY,
+  PARTITION,
+  HOME_ADDRESS_PLACEHOLDER,
+  DEFAULT_ADDRESS_PLACEHOLDER,
+  LOGO_SVG,
+  GLOBE_SVG,
+  X_SVG,
+  ZOOM_MIN,
+  ZOOM_MAX,
+  ZOOM_DEFAULT,
+  HISTORY_MAX,
+  HISTORY_RECENT_MAX,
+  BROWSE_HISTORY_MAX,
+  BOOKMARKS_MENU_MAX,
+  SIDE_RAIL_ITEMS,
+  CHROME_UA,
+  SIDE_PANEL_MIN_W,
+  SIDE_PANEL_MAX_RATIO,
+  SIDE_PANEL_DEFAULT_W,
+  els,
+  filterUI,
+  tabAdCounts,
+  tabEls,
+  sidePanelWebviews,
+  sideWebviewLayout,
+  bookmarkUrls,
+  sessionHistory,
+  closedTabs,
+} from "../js/shared.js";
 
-const HOME = window.slopAPI.newTabURL;
-const HISTORY = window.slopAPI.historyURL;
-const PARTITION = window.slopAPI.partition;
-// Friendly address shown instead of the internal file:// history page URL.
-const HISTORY_DISPLAY = "slop://history";
-const HOME_ADDRESS_PLACEHOLDER = "Search the web";
-const DEFAULT_ADDRESS_PLACEHOLDER = "Search or enter address";
+import {
+  isHome,
+  isHistoryPage,
+  displayURL,
+  pickFavicon,
+  faviconFallback,
+  escapeHTML,
+  truncate,
+  renderIcons,
+  updateRailIconSizes,
+  toURL,
+} from "../js/utils.js";
 
-// Inline SlopBrowser logo (reused for the home tab icon).
-const LOGO_SVG =
-  '<svg class="logo-icon" viewBox="0 0 215 238" xmlns="http://www.w3.org/2000/svg">' +
-  '<path d="M101.682 168.635C105.62 167.927 107.59 165.981 107.59 162.796C107.59 159.492 106.515 155.835 104.367 151.825C102.338 147.696 99.295 143.803 95.2373 140.146C84.6156 130.708 70.2345 125.99 52.0941 125.99C43.1432 125.99 34.7891 127.464 27.0316 130.413C18.7968 126.285 12.2329 119.737 7.33972 110.772C2.44657 101.806 0 92.1328 0 81.7517C0 54.6191 11.4571 33.6798 34.3714 18.9338C54.0633 6.31128 78.35 0 107.231 0C128.714 0 146.794 2.30037 161.474 6.90112C176.153 11.3839 188.147 17.1643 197.456 24.2424C200.201 32.0283 201.574 40.109 201.574 48.4848C201.574 56.8605 200.44 64.4694 198.172 71.3115C195.905 78.1537 192.623 83.6392 188.326 87.768C184.269 84.8188 176.929 81.8107 166.307 78.7435C155.686 75.6763 146.019 74.1428 137.306 74.1428C128.594 74.1428 122.746 74.6736 119.763 75.7353C116.898 76.797 115.466 78.4486 115.466 80.69C115.466 81.7517 115.645 82.7544 116.003 83.6981C120.18 82.6364 125.551 82.1056 132.115 82.1056C155.387 82.1056 174.363 87.5321 189.042 98.3851C206.347 111.362 215 130.826 215 156.779C215 179.665 205.631 198.658 186.894 213.758C166.606 229.919 139.335 238 105.083 238C86.2268 238 69.8765 236.584 56.0325 233.753C42.1885 231.04 28.7025 226.203 15.5745 219.243C6.62365 206.385 2.14821 193.349 2.14821 180.137C2.14821 166.806 6.74299 155.776 15.9326 147.047C25.1221 138.317 36.4002 133.952 49.7669 133.952C63.2528 133.952 74.2326 136.666 82.7061 142.092C91.2989 147.519 97.6242 156.366 101.682 168.635Z" fill="currentColor"/>' +
-  "</svg>";
+import { api } from "../js/registry.js";
 
-// Inline icons for tabs (avoids re-running lucide scans on every update).
-const GLOBE_SVG =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-  '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>';
-const X_SVG =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+let tabs = [];
+let activeId = null;
+let idSeq = 1;
+let privateTabSeq = 0;
+let browseHistory = [];
+let savedBookmarks = [];
+let activeSidePanelId = null;
+let sideFitTimer = null;
+let zoomHideTimer = null;
 
-function isHome(url) {
-  if (!url) return true;
-  try {
-    const homePath = new URL(HOME).pathname;
-    return new URL(url).pathname === homePath;
-  } catch (_) {
-    const base = HOME.split("?")[0];
-    return url === HOME || url.startsWith(base);
-  }
-}
-function isHistoryPage(url) {
-  if (!url) return false;
-  try {
-    return new URL(url).pathname === new URL(HISTORY).pathname;
-  } catch (_) {
-    const base = HISTORY.split("?")[0];
-    return url === HISTORY || url.startsWith(base);
-  }
-}
-function displayURL(url) {
-  if (isHistoryPage(url)) return HISTORY_DISPLAY;
-  return url;
-}
 
 function syncAddressBar(url) {
   if (isHome(url)) {
@@ -167,11 +177,6 @@ async function toggleBookmark() {
   } catch (_) {}
 }
 
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 2.0;
-const ZOOM_DEFAULT = 1.0;
-let zoomHideTimer = null;
-
 function clampZoom(factor) {
   const n = Number(factor);
   if (!Number.isFinite(n)) return ZOOM_DEFAULT;
@@ -204,183 +209,11 @@ function tabByWebContentsId(id) {
   return tabs.find((t) => t.webContentsId === id) || null;
 }
 
-const els = {
-  tabs: document.getElementById("tabs"),
-  newTab: document.getElementById("newTab"),
-  viewsFrame: document.getElementById("viewsFrame"),
-  views: document.getElementById("views"),
-  zoomIndicator: document.getElementById("zoomIndicator"),
-  back: document.getElementById("back"),
-  forward: document.getElementById("forward"),
-  reload: document.getElementById("reload"),
-  urlForm: document.getElementById("urlForm"),
-  url: document.getElementById("url"),
-  bookmarkBtn: document.getElementById("bookmarkBtn"),
-  slopBadge: document.getElementById("slopBadge"),
-  slopPanel: document.getElementById("slopPanel"),
-  slopPageCount: document.getElementById("slopPageCount"),
-  slopTotalCount: document.getElementById("slopTotalCount"),
-  adPageCount: document.getElementById("adPageCount"),
-  adTotalCount: document.getElementById("adTotalCount"),
-  slopStatusText: document.getElementById("slopStatusText"),
-  slopToggle: document.getElementById("slopToggle"),
-  slopSwitchState: document.getElementById("slopSwitchState"),
-  adBlockToggle: document.getElementById("adBlockToggle"),
-  adBlockSwitchState: document.getElementById("adBlockSwitchState"),
-  menuBtn: document.getElementById("menuBtn"),
-  menu: document.getElementById("menu"),
-  historySubWrap: document.getElementById("historySubWrap"),
-  historyRecentList: document.getElementById("historyRecentList"),
-  bookmarksSubWrap: document.getElementById("bookmarksSubWrap"),
-  bookmarksThisTab: document.getElementById("bookmarksThisTab"),
-  bookmarksAllTabs: document.getElementById("bookmarksAllTabs"),
-  bookmarksSavedList: document.getElementById("bookmarksSavedList"),
-  cookieOverlay: document.getElementById("cookieOverlay"),
-  cookiePanel: document.getElementById("cookiePanel"),
-  cookieClose: document.getElementById("cookieClose"),
-  cookieScope: document.getElementById("cookieScope"),
-  cookieSiteOnly: document.getElementById("cookieSiteOnly"),
-  cookieClearSite: document.getElementById("cookieClearSite"),
-  cookieClearAll: document.getElementById("cookieClearAll"),
-  cookieList: document.getElementById("cookieList"),
-  cookieEmpty: document.getElementById("cookieEmpty"),
-  sideRail: document.getElementById("sideRail"),
-  sideRailItems: document.getElementById("sideRailItems"),
-  sideRailToggle: document.getElementById("sideRailToggle"),
-  sidePanel: document.getElementById("sidePanel"),
-  sidePanelViews: document.getElementById("sidePanelViews"),
-  sidePanelResize: document.getElementById("sidePanelResize"),
-  sidePanelResizeShield: document.getElementById("sidePanelResizeShield"),
-  sidePanelTitle: document.querySelector(".side-panel-title"),
-  sidePanelIcon: document.querySelector(".side-panel-icon"),
-  sidePanelClose: document.querySelector(".side-panel-close"),
-  min: document.getElementById("min"),
-  max: document.getElementById("max"),
-  close: document.getElementById("close"),
-};
-
-// Filter UI — adblock wired to main process; slop filter still UI-only.
-const filterUI = {
-  slopEnabled: true,
-  adBlockEnabled: true,
-  totalSlopBlocked: 0,
-  totalAdBlocked: 0,
-};
-
-/** Per-tab blocked ad count (tab id -> number). */
-const tabAdCounts = new Map();
-
-let tabs = [];
-let activeId = null;
-let idSeq = 1;
-let privateTabSeq = 0;
-
-const sessionHistory = [];
-const closedTabs = [];
-let browseHistory = [];
-const bookmarkUrls = new Set();
-let savedBookmarks = [];
-const HISTORY_MAX = 100;
-const HISTORY_RECENT_MAX = 8;
-const BROWSE_HISTORY_MAX = 2000;
-const BOOKMARKS_MENU_MAX = 12;
-
 /* ---------- Favicons ---------- */
 // Prefer a real .ico/.png/.svg favicon over apple-touch icons; take the first.
-function pickFavicon(favicons) {
-  if (!favicons || !favicons.length) return null;
-  const preferred = favicons.find((u) =>
-    /\.(ico|png|svg|gif|jpg|jpeg|webp)(\?|$)/i.test(u)
-  );
-  return preferred || favicons[0];
-}
-
 // Default favicon location for a site that didn't declare one in HTML.
-function faviconFallback(url) {
-  try {
-    const u = new URL(url);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    return u.origin + "/favicon.ico";
-  } catch (_) {
-    return null;
-  }
-}
-
-function escapeHTML(s) {
-  return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
 /* ---------- Icons (Lucide) ---------- */
-function renderIcons(root) {
-  try {
-    const scope = root || document;
-    const opts = root ? { root } : undefined;
-    if (opts) window.lucide.createIcons(opts);
-    else window.lucide.createIcons();
-
-    scope.querySelectorAll(".menu-item svg").forEach((svg) => {
-      svg.setAttribute("width", "16");
-      svg.setAttribute("height", "16");
-    });
-    scope.querySelectorAll(".rail-item svg").forEach((svg) => {
-      const active = svg.closest(".rail-item")?.classList.contains("active");
-      const size = active ? "24" : "20";
-      svg.setAttribute("width", size);
-      svg.setAttribute("height", size);
-    });
-  } catch (_) {}
-}
-
-function updateRailIconSizes(btn) {
-  const active = btn.classList.contains("active");
-  const size = active ? "24" : "20";
-  btn.querySelectorAll("svg").forEach((svg) => {
-    svg.setAttribute("width", size);
-    svg.setAttribute("height", size);
-  });
-}
-
-function integrationFavicon(domain) {
-  return (
-    "https://www.google.com/s2/favicons?domain=" +
-    encodeURIComponent(domain) +
-    "&sz=64"
-  );
-}
-
 /* ---------- URL Helpers ---------- */
-function toURL(input) {
-  const raw = input.trim();
-  if (!raw) return HOME;
-  // Aliases for the start page (must run before the protocol check).
-  const low = raw.toLowerCase();
-  if (low === "home" || low === "https://home" || low === "slop://home") {
-    return HOME;
-  }
-  // Absolute local file path (Windows "C:\..." / "C:/..." or UNC "\\...").
-  if (/^[a-z]:[\\/]/i.test(raw) || raw.startsWith("\\\\")) {
-    return "file:///" + raw.replace(/\\/g, "/");
-  }
-  // Explicit scheme (http://, https://, file://, ...).
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) return raw;
-  if (/^localhost(:\d+)?(\/.*)?$/i.test(raw)) return "http://" + raw;
-
-  // Domain heuristic: only the hostname (before the first slash) may decide
-  // whether this is a URL. A dot inside the *path* (e.g. "test/demo.html")
-  // must NOT make it a URL - otherwise it resolves to a bogus host.
-  if (!raw.includes(" ")) {
-    const host = raw.split(/[/?#]/)[0];
-    const isIp = /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(host);
-    const isDomain = /^[^\s.]+(\.[^\s.]+)+(:\d+)?$/.test(host) && /\.[a-z]{2,}(:\d+)?$/i.test(host);
-    if (isIp || isDomain) return "https://" + raw;
-  }
-  return "https://www.google.com/search?q=" + encodeURIComponent(raw);
-}
-
 /* ---------- Tabs ---------- */
 function getTab(id) {
   return tabs.find((t) => t.id === id);
@@ -510,7 +343,6 @@ function setActive(id) {
  * updated in place. Rebuilding everything on each update caused favicon
  * <img> elements to be recreated constantly (flicker + reload delays).
  */
-const tabEls = new Map(); // tab id -> { root, icon, title, iconKey }
 
 function buildTabEl(t) {
   const root = document.createElement("div");
@@ -1148,11 +980,6 @@ function formatCookieExpiry(expirationDate) {
   return Number.isNaN(d.getTime()) ? "Session" : d.toLocaleString();
 }
 
-function truncate(s, max = 80) {
-  const t = String(s ?? "");
-  return t.length <= max ? t : t.slice(0, max) + "…";
-}
-
 async function refreshCookieList() {
   const tab = activeTab();
   if (!tab) return;
@@ -1382,73 +1209,6 @@ function setMaximized(isMax) {
 
 winApi.onMaximizedChange(setMaximized);
 winApi.isMaximized().then(setMaximized);
-
-/* ---------- Side rail (shortcuts & integrations) ---------- */
-const SIDE_RAIL_ITEMS = [
-  {
-    id: "home",
-    label: "Home",
-    type: "tab",
-    icon: "home",
-  },
-  {
-    id: "whatsapp",
-    label: "WhatsApp",
-    url: "https://web.whatsapp.com/",
-    favicon: "https://web.whatsapp.com/favicon.ico",
-    icon: "message-circle",
-    accent: "#25d366",
-  },
-  {
-    id: "telegram",
-    label: "Telegram",
-    url: "https://web.telegram.org/a/",
-    favicon: "https://web.telegram.org/favicon.ico",
-    icon: "send",
-    accent: "#2aabee",
-  },
-  {
-    id: "discord",
-    label: "Discord",
-    url: "https://discord.com/channels/@me",
-    favicon: integrationFavicon("discord.com"),
-    icon: "gamepad-2",
-    accent: "#5865f2",
-  },
-  {
-    id: "gmail",
-    label: "Gmail",
-    url: "https://mail.google.com/",
-    favicon: integrationFavicon("mail.google.com"),
-    icon: "mail",
-    accent: "#ea4335",
-  },
-  {
-    id: "instagram",
-    label: "Instagram",
-    url: "https://www.instagram.com/",
-    favicon: integrationFavicon("instagram.com"),
-    icon: "camera",
-    accent: "#e1306c",
-  },
-  {
-    id: "messenger",
-    label: "Messenger",
-    url: "https://www.messenger.com/",
-    favicon: integrationFavicon("messenger.com"),
-    icon: "messages-square",
-    accent: "#0084ff",
-  },
-];
-
-const sidePanelWebviews = new Map();
-const sideWebviewLayout = new WeakMap();
-let activeSidePanelId = null;
-const CHROME_UA = window.slopAPI.chromeUserAgent;
-const SIDE_PANEL_MIN_W = 360;
-const SIDE_PANEL_MAX_RATIO = 0.5;
-const SIDE_PANEL_DEFAULT_W = 500;
-let sideFitTimer = null;
 
 function getSidePanelWidth() {
   try {
@@ -1859,15 +1619,40 @@ if (els.sidePanelResize) {
 setRailCollapsed(loadRailCollapsed());
 renderSideRail();
 
-/* ---------- Start ---------- */
-renderIcons();
-createTab(HOME);
-refreshBrowseHistory();
-refreshBookmarks();
 
-window.slopAPI.onHistoryChanged(() => {
+export function startChrome() {
+  renderIcons();
+  createTab(HOME);
   refreshBrowseHistory();
-  for (const tab of tabs) {
-    if (isHistoryPage(tab.url)) injectHistoryPage(tab);
-  }
+  refreshBookmarks();
+  window.slopAPI.onHistoryChanged(() => {
+    refreshBrowseHistory();
+    for (const tab of tabs) {
+      if (isHistoryPage(tab.url)) injectHistoryPage(tab);
+    }
+  });
+}
+
+Object.assign(api, {
+  createTab,
+  setActive,
+  activeTab,
+  closeTab,
+  updateTabPresentation,
+  renderTabs,
+  reloadActiveTab,
+  openHistoryPage,
+  openRecentUrl,
+  reopenClosedTab,
+  toggleMenu,
+  toggleSlopPanel,
+  toggleCookieManager,
+  openCookieManager,
+  setRailCollapsed,
+  renderSideRail,
+  openSidePanel,
+  closeSidePanel,
+  fitActiveSideWebview,
+  bookmarkThisTab,
+  bookmarkAllTabs,
 });

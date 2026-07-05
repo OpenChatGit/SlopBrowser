@@ -477,37 +477,58 @@
           count > 0 ? "Delete selected (" + count + ")" : "Delete all";
       }
 
-      async function persistRemoveEntry(entry) {
-        const api = window.slopApp?.history;
-        if (!api) return;
-        if (api.removeEntry) {
-          await api.removeEntry(entry.url, entry.visitedAt).catch(() => {});
-        } else {
-          await api.remove(entry.url).catch(() => {});
-        }
+      function historyApi() {
+        return window.slopApp?.history || null;
+      }
+
+      function historyBridge() {
+        return window.slopHistoryBridge || null;
       }
 
       async function reloadFromStore() {
-        const api = window.slopApp?.history;
-        if (!api?.getAll) {
-          updateToolbar();
-          renderList(filterEntries(document.getElementById("q").value));
+        const api = historyApi();
+        if (api?.getAll) {
+          try {
+            const entries = await api.getAll();
+            window.renderSlopHistory(entries);
+            return;
+          } catch (_) {}
+        }
+        const bridge = historyBridge();
+        if (bridge?.send) {
+          bridge.send("refresh");
           return;
         }
-        try {
-          const entries = await api.getAll();
-          window.renderSlopHistory(entries);
-        } catch (_) {
-          updateToolbar();
-          renderList(filterEntries(document.getElementById("q").value));
+        updateToolbar();
+        renderList(filterEntries(document.getElementById("q").value));
+      }
+
+      async function persistRemoveEntry(entry) {
+        const api = historyApi();
+        if (api?.removeEntry) {
+          await api.removeEntry(entry.url, entry.visitedAt).catch(() => {});
+          return "direct";
         }
+        const bridge = historyBridge();
+        if (bridge?.send) {
+          bridge.send("removeEntry", entry);
+          return "bridge";
+        }
+        return null;
       }
 
       async function deleteFromToolbar() {
-        const api = window.slopApp?.history;
-        if (!api) return;
+        const api = historyApi();
+        const bridge = historyBridge();
+        if (!api && !bridge) return;
+
+        let mode = "direct";
         if (selectedKeys.size === 0) {
-          if (api.clear) await api.clear().catch(() => {});
+          if (api?.clear) await api.clear().catch(() => {});
+          else if (bridge?.send) {
+            bridge.send("clear");
+            mode = "bridge";
+          }
         } else {
           const entries = [...selectedKeys].map((k) => {
             const sep = k.indexOf("\0");
@@ -516,21 +537,20 @@
               visitedAt: Number(k.slice(sep + 1)),
             };
           });
-          if (api.removeEntries) {
+          if (api?.removeEntries) {
             await api.removeEntries(entries).catch(() => {});
-          } else {
+          } else if (api?.removeEntry) {
             await Promise.all(
-              entries.map((e) =>
-                api.removeEntry
-                  ? api.removeEntry(e.url, e.visitedAt).catch(() => {})
-                  : api.remove(e.url).catch(() => {})
-              )
+              entries.map((e) => api.removeEntry(e.url, e.visitedAt).catch(() => {}))
             );
+          } else if (bridge?.send) {
+            bridge.send("removeEntries", { entries });
+            mode = "bridge";
           }
         }
         selectedKeys.clear();
         lastSelectedKey = null;
-        await reloadFromStore();
+        if (mode === "direct") await reloadFromStore();
       }
 
       function globeSvg() {
@@ -792,9 +812,9 @@
           navigator.clipboard?.writeText(url).catch(() => {});
         } else if (action === "remove") {
           const key = entryKey(ctxTarget);
-          persistRemoveEntry(ctxTarget).then(() => {
+          persistRemoveEntry(ctxTarget).then((mode) => {
             selectedKeys.delete(key);
-            reloadFromStore();
+            if (mode === "direct") reloadFromStore();
           });
         }
         closeCtxMenu();

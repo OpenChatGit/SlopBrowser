@@ -1,11 +1,13 @@
 {
   "name": "slopbrowser",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "description": "A browser that blocks AI slop across the whole web - like an ad blocker against AI-generated junk.",
   "main": "main.js",
   "scripts": {
+    "prestart": "node scripts/build-chrome-module.js",
     "start": "electron .",
     "dev": "electron . --dev",
+    "build:chrome": "node scripts/build-chrome-module.js",
     "test": "node test/engine-test.js"
   },
   "keywords": [
