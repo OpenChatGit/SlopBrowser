@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>History</title>
+    <style>
+      :root {
+        --fg: #ffffff;
+        --muted: #8b90a3;
+        --accent: #6c8cff;
+        --border: #333;
+        --bg: #0e0f13;
+        --surface: rgba(18, 18, 18, 0.88);
+        --row-hover: rgba(255, 255, 255, 0.06);
+        --connector: #444;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: "Inter", "Segoe UI", -apple-system, system-ui, sans-serif;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+      }
+      *::-webkit-scrollbar {
+        width: 5px;
+        height: 5px;
+      }
+      *::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      *::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+      }
+      *::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.22);
+      }
+      *::-webkit-scrollbar-corner {
+        background: transparent;
+      }
+      #page {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 28px 20px 48px;
+      }
+
+      /* Search */
+      #searchForm {
+        margin-bottom: 12px;
+      }
+      .search-box {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 4px 18px;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
+      .search-box:focus-within {
+        border-color: #555;
+      }
+      .search-box .glass {
+        color: var(--muted);
+        width: 18px;
+        height: 18px;
+        flex: 0 0 auto;
+      }
+      #q {
+        flex: 1;
+        min-width: 0;
+        border: none;
+        background: transparent;
+        outline: none;
+        color: var(--fg);
+        font-size: 15px;
+        padding: 12px 0;
+        user-select: text;
+      }
+      #q::placeholder {
+        color: var(--muted);
+      }
+
+      /* Toolbar */
+      .hist-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        min-height: 36px;
+        margin-bottom: 12px;
+      }
+      .hist-toolbar[hidden] {
+        display: none !important;
+      }
+      .hist-toolbar-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 34px;
+        padding: 0 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--fg);
+        font: inherit;
+        font-size: 13px;
+        line-height: 1.35;
+        cursor: pointer;
+        transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+      }
+      .hist-toolbar-btn svg {
+        width: 15px;
+        height: 15px;
+        flex-shrink: 0;
+      }
+      .hist-toolbar-btn:hover {
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .hist-toolbar-btn.danger:hover {
+        background: rgba(255, 107, 107, 0.12);
+        border-color: rgba(255, 107, 107, 0.45);
+        color: #ff9a9a;
+      }
+
+      /* Card */
+      #card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        overflow: hidden;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        max-height: calc(100vh - 132px);
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+      .day-block + .day-block {
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .day-head {
+        padding: 16px 20px 8px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      .day-list {
+        padding: 0 8px 8px;
+      }
+
+      /* Row */
+      .hist-row {
+        display: grid;
+        grid-template-columns: 22px 52px 20px minmax(0, 1fr) 32px;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        text-decoration: none;
+        color: inherit;
+        position: relative;
+        transition: background 0.12s ease;
+        cursor: pointer;
+      }
+      .hist-row:hover {
+        background: var(--row-hover);
+      }
+      .hist-row.selected {
+        background: rgba(108, 140, 255, 0.1);
+      }
+      .hist-row.selected:hover {
+        background: rgba(108, 140, 255, 0.14);
+      }
+      .hist-row.grouped .time-cell::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: -14px;
+        bottom: 50%;
+        width: 1px;
+        background: var(--connector);
+        transform: translateX(-50%);
+      }
+      .hist-row.grouped-next .time-cell::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        bottom: -14px;
+        width: 1px;
+        background: var(--connector);
+        transform: translateX(-50%);
+      }
+      .time-cell {
+        position: relative;
+        font-size: 12px;
+        color: var(--muted);
+        text-align: right;
+        padding-right: 4px;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      .hist-check-wrap {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .hist-check-input {
+        position: absolute;
+        opacity: 0;
+        width: 1px;
+        height: 1px;
+        pointer-events: none;
+      }
+      .hist-check-box {
+        width: 16px;
+        height: 16px;
+        border: 1.5px solid #5c6370;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.03);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+        box-sizing: border-box;
+      }
+      .hist-check-box::after {
+        content: "";
+        width: 4px;
+        height: 8px;
+        border: solid #fff;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg) translateY(-1px);
+        opacity: 0;
+        transition: opacity 0.12s ease;
+      }
+      .hist-row:hover .hist-check-box {
+        border-color: #8b90a3;
+      }
+      .hist-check-input:checked + .hist-check-box {
+        border-color: var(--accent);
+        background: var(--accent);
+        box-shadow: 0 0 0 2px rgba(108, 140, 255, 0.2);
+      }
+      .hist-check-input:checked + .hist-check-box::after {
+        opacity: 1;
+      }
+      .hist-check-input:focus-visible + .hist-check-box {
+        outline: 2px solid rgba(108, 140, 255, 0.45);
+        outline-offset: 2px;
+      }
+      .hist-icon {
+        width: 20px;
+        height: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .hist-icon img {
+        width: 20px;
+        height: 20px;
+        object-fit: contain;
+        display: block;
+      }
+      .hist-icon svg {
+        width: 16px;
+        height: 16px;
+        color: var(--muted);
+      }
+      .hist-main {
+        min-width: 0;
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        overflow: hidden;
+      }
+      .hist-title {
+        font-size: 14px;
+        line-height: 1.35;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex-shrink: 1;
+        min-width: 0;
+      }
+      .hist-domain {
+        font-size: 13px;
+        color: var(--muted);
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .hist-menu {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+      }
+      .hist-row:hover .hist-menu,
+      .hist-menu:focus-visible,
+      .hist-menu.menu-open {
+        opacity: 1;
+      }
+      .hist-menu:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--fg);
+      }
+      .hist-menu svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      /* Context menu */
+      #ctxMenu {
+        position: fixed;
+        z-index: 50;
+        min-width: 180px;
+        padding: 4px;
+        background: #1c1c20;
+        border: 1px solid var(--border);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+        display: none;
+      }
+      #ctxMenu.open {
+        display: block;
+      }
+      .ctx-item {
+        display: block;
+        width: 100%;
+        border: none;
+        background: transparent;
+        color: var(--fg);
+        font: inherit;
+        font-size: 13px;
+        text-align: left;
+        padding: 8px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .ctx-item:hover {
+        background: var(--row-hover);
+      }
+      .ctx-item.danger {
+        color: #ff6b6b;
+      }
+
+      .empty {
+        padding: 48px 24px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .empty-filter {
+        display: none;
+        padding: 32px 24px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .empty-filter.visible {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="page">
+      <form id="searchForm">
+        <div class="search-box">
+          <i class="glass" data-lucide="search"></i>
+          <input
+            id="q"
+            type="search"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="Search history"
+          />
+        </div>
+      </form>
+
+      <div id="histToolbar" class="hist-toolbar" hidden>
+        <button type="button" id="deleteBtn" class="hist-toolbar-btn danger">
+          <i data-lucide="trash-2"></i>
+          <span id="deleteBtnLabel">Delete all</span>
+        </button>
+      </div>
+
+      <div id="card">
+        <div id="content"></div>
+        <p id="emptyAll" class="empty" hidden>No history yet — visit a few pages first.</p>
+        <p id="emptyFilter" class="empty-filter">No results for your search.</p>
+      </div>
+    </div>
+
+    <div id="ctxMenu" role="menu">
+      <button type="button" class="ctx-item" data-action="open">Open in new tab</button>
+      <button type="button" class="ctx-item" data-action="copy">Copy link</button>
+      <button type="button" class="ctx-item danger" data-action="remove">
+        Remove from history
+      </button>
+    </div>
+
+    <script src="lib/lucide.js"></script>
+    <script>
+      try {
+        window.lucide.createIcons();
+      } catch (e) {}
+
+      let allEntries = [];
+      let ctxTarget = null;
+      const selectedKeys = new Set();
+      let lastSelectedKey = null;
+
+      function entryKey(entry) {
+        return entry.url + "\0" + entry.visitedAt;
+      }
+
+      function keyFromRow(row) {
+        return row.dataset.url + "\0" + row.dataset.visitedAt;
+      }
+
+      function getVisibleEntries() {
+        return filterEntries(document.getElementById("q").value);
+      }
+
+      function getVisibleEntryKeys() {
+        return getVisibleEntries().map(entryKey);
+      }
+
+      function applySelectionToDom() {
+        document.querySelectorAll(".hist-row").forEach((row) => {
+          const key = keyFromRow(row);
+          const sel = selectedKeys.has(key);
+          row.classList.toggle("selected", sel);
+          const input = row.querySelector(".hist-check-input");
+          if (input) input.checked = sel;
+        });
+        updateToolbar();
+      }
+
+      function selectRange(fromKey, toKey) {
+        const keys = getVisibleEntryKeys();
+        const a = keys.indexOf(fromKey);
+        const b = keys.indexOf(toKey);
+        if (a === -1 || b === -1) return;
+        const lo = Math.min(a, b);
+        const hi = Math.max(a, b);
+        for (let i = lo; i <= hi; i++) selectedKeys.add(keys[i]);
+      }
+
+      function updateToolbar() {
+        const bar = document.getElementById("histToolbar");
+        const label = document.getElementById("deleteBtnLabel");
+        const count = selectedKeys.size;
+        bar.hidden = !allEntries.length;
+        label.textContent =
+          count > 0 ? "Delete selected (" + count + ")" : "Delete all";
+      }
+
+      async function persistRemoveEntry(entry) {
+        const api = window.slopApp?.history;
+        if (!api) return;
+        if (api.removeEntry) {
+          await api.removeEntry(entry.url, entry.visitedAt).catch(() => {});
+        } else {
+          await api.remove(entry.url).catch(() => {});
+        }
+      }
+
+      async function reloadFromStore() {
+        const api = window.slopApp?.history;
+        if (!api?.getAll) {
+          updateToolbar();
+          renderList(filterEntries(document.getElementById("q").value));
+          return;
+        }
+        try {
+          const entries = await api.getAll();
+          window.renderSlopHistory(entries);
+        } catch (_) {
+          updateToolbar();
+          renderList(filterEntries(document.getElementById("q").value));
+        }
+      }
+
+      async function deleteFromToolbar() {
+        const api = window.slopApp?.history;
+        if (!api) return;
+        if (selectedKeys.size === 0) {
+          if (api.clear) await api.clear().catch(() => {});
+        } else {
+          const entries = [...selectedKeys].map((k) => {
+            const sep = k.indexOf("\0");
+            return {
+              url: k.slice(0, sep),
+              visitedAt: Number(k.slice(sep + 1)),
+            };
+          });
+          if (api.removeEntries) {
+            await api.removeEntries(entries).catch(() => {});
+          } else {
+            await Promise.all(
+              entries.map((e) =>
+                api.removeEntry
+                  ? api.removeEntry(e.url, e.visitedAt).catch(() => {})
+                  : api.remove(e.url).catch(() => {})
+              )
+            );
+          }
+        }
+        selectedKeys.clear();
+        lastSelectedKey = null;
+        await reloadFromStore();
+      }
+
+      function globeSvg() {
+        return (
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>'
+        );
+      }
+
+      function domainFromUrl(url) {
+        try {
+          return new URL(url).hostname.replace(/^www\./, "");
+        } catch (_) {
+          return url;
+        }
+      }
+
+      function formatTime(ts) {
+        const d = new Date(ts || Date.now());
+        return d.toLocaleTimeString(undefined, {
+          hour: "numeric",
+          minute: "2-digit",
+        });
+      }
+
+      function dayKey(ts) {
+        const d = new Date(ts || Date.now());
+        return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate();
+      }
+
+      function formatDayHeader(ts) {
+        const d = new Date(ts || Date.now());
+        const now = new Date();
+        const todayKey = dayKey(now.getTime());
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const key = dayKey(d.getTime());
+        const weekday = d.toLocaleDateString(undefined, { weekday: "long" });
+        const dateStr = d.toLocaleDateString(undefined, {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        });
+        if (key === todayKey) return "Today – " + dateStr;
+        if (key === dayKey(yesterday.getTime())) return "Yesterday – " + dateStr;
+        return dateStr;
+      }
+
+      function groupByDay(entries) {
+        const map = new Map();
+        for (const e of entries) {
+          const k = dayKey(e.visitedAt);
+          if (!map.has(k)) map.set(k, []);
+          map.get(k).push(e);
+        }
+        return [...map.entries()].sort((a, b) => {
+          const ta = a[1][0]?.visitedAt || 0;
+          const tb = b[1][0]?.visitedAt || 0;
+          return tb - ta;
+        });
+      }
+
+      function sameSite(a, b) {
+        return domainFromUrl(a.url) === domainFromUrl(b.url);
+      }
+
+      function filterEntries(query) {
+        const q = query.trim().toLowerCase();
+        if (!q) return allEntries;
+        return allEntries.filter((e) => {
+          const hay =
+            (e.title || "") +
+            " " +
+            (e.url || "") +
+            " " +
+            domainFromUrl(e.url);
+          return hay.toLowerCase().includes(q);
+        });
+      }
+
+      function buildIcon(entry) {
+        const wrap = document.createElement("span");
+        wrap.className = "hist-icon";
+        if (entry.favicon) {
+          const img = document.createElement("img");
+          img.src = entry.favicon;
+          img.alt = "";
+          img.referrerPolicy = "no-referrer";
+          img.onerror = () => {
+            wrap.innerHTML = globeSvg();
+          };
+          wrap.appendChild(img);
+        } else {
+          wrap.innerHTML = globeSvg();
+        }
+        return wrap;
+      }
+
+      function buildRow(entry, opts) {
+        const row = document.createElement("div");
+        row.className = "hist-row";
+        row.dataset.url = entry.url;
+        row.dataset.visitedAt = String(entry.visitedAt);
+        const key = entryKey(entry);
+        if (selectedKeys.has(key)) row.classList.add("selected");
+        if (opts.grouped) row.classList.add("grouped");
+        if (opts.groupedNext) row.classList.add("grouped-next");
+
+        const checkWrap = document.createElement("label");
+        checkWrap.className = "hist-check-wrap";
+        checkWrap.addEventListener("click", (e) => e.stopPropagation());
+
+        const check = document.createElement("input");
+        check.type = "checkbox";
+        check.className = "hist-check-input";
+        check.checked = selectedKeys.has(key);
+        check.addEventListener("click", (e) => {
+          if (e.shiftKey && lastSelectedKey != null) {
+            e.preventDefault();
+            selectRange(lastSelectedKey, key);
+            applySelectionToDom();
+            return;
+          }
+          lastSelectedKey = key;
+        });
+        check.addEventListener("change", () => {
+          if (check.checked) selectedKeys.add(key);
+          else selectedKeys.delete(key);
+          row.classList.toggle("selected", check.checked);
+          updateToolbar();
+        });
+
+        const checkBox = document.createElement("span");
+        checkBox.className = "hist-check-box";
+        checkWrap.appendChild(check);
+        checkWrap.appendChild(checkBox);
+
+        const time = document.createElement("span");
+        time.className = "time-cell";
+        time.textContent = formatTime(entry.visitedAt);
+
+        const main = document.createElement("div");
+        main.className = "hist-main";
+        const title = document.createElement("span");
+        title.className = "hist-title";
+        title.textContent = entry.title || entry.url;
+        const domain = document.createElement("span");
+        domain.className = "hist-domain";
+        domain.textContent = domainFromUrl(entry.url);
+        main.appendChild(title);
+        main.appendChild(domain);
+
+        const menuBtn = document.createElement("button");
+        menuBtn.type = "button";
+        menuBtn.className = "hist-menu";
+        menuBtn.setAttribute("aria-label", "More actions");
+        menuBtn.innerHTML = '<i data-lucide="ellipsis-vertical"></i>';
+        menuBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openCtxMenu(menuBtn, entry);
+        });
+
+        row.addEventListener("click", (e) => {
+          if (e.target.closest(".hist-check-wrap, .hist-menu")) return;
+          window.location.href = entry.url;
+        });
+
+        row.appendChild(checkWrap);
+        row.appendChild(time);
+        row.appendChild(buildIcon(entry));
+        row.appendChild(main);
+        row.appendChild(menuBtn);
+        return row;
+      }
+
+      function renderList(entries) {
+        const content = document.getElementById("content");
+        const emptyAll = document.getElementById("emptyAll");
+        const emptyFilter = document.getElementById("emptyFilter");
+        const query = document.getElementById("q").value;
+
+        content.replaceChildren();
+        emptyAll.hidden = true;
+        emptyFilter.classList.remove("visible");
+
+        if (!allEntries.length) {
+          emptyAll.hidden = false;
+          updateToolbar();
+          return;
+        }
+        if (!entries.length) {
+          emptyFilter.classList.add("visible");
+          updateToolbar();
+          return;
+        }
+
+        const days = groupByDay(entries);
+        for (const [, dayEntries] of days) {
+          const block = document.createElement("div");
+          block.className = "day-block";
+          const head = document.createElement("div");
+          head.className = "day-head";
+          head.textContent = formatDayHeader(dayEntries[0].visitedAt);
+          block.appendChild(head);
+
+          const list = document.createElement("div");
+          list.className = "day-list";
+
+          for (let i = 0; i < dayEntries.length; i++) {
+            const prev = dayEntries[i - 1];
+            const next = dayEntries[i + 1];
+            const grouped = prev && sameSite(prev, dayEntries[i]);
+            const groupedNext = next && sameSite(next, dayEntries[i]);
+            list.appendChild(
+              buildRow(dayEntries[i], { grouped, groupedNext })
+            );
+          }
+          block.appendChild(list);
+          content.appendChild(block);
+        }
+
+        try {
+          window.lucide.createIcons({ attrs: { "stroke-width": 2 } });
+        } catch (_) {}
+        updateToolbar();
+      }
+
+      function openCtxMenu(anchor, entry) {
+        ctxTarget = entry;
+        const menu = document.getElementById("ctxMenu");
+        const r = anchor.getBoundingClientRect();
+        menu.style.left = Math.max(8, r.right - 180) + "px";
+        menu.style.top = r.bottom + 4 + "px";
+        menu.classList.add("open");
+        document.querySelectorAll(".hist-menu.menu-open").forEach((b) => {
+          b.classList.remove("menu-open");
+        });
+        anchor.classList.add("menu-open");
+      }
+
+      function closeCtxMenu() {
+        document.getElementById("ctxMenu").classList.remove("open");
+        document.querySelectorAll(".hist-menu.menu-open").forEach((b) => {
+          b.classList.remove("menu-open");
+        });
+        ctxTarget = null;
+      }
+
+      document.getElementById("ctxMenu").addEventListener("click", (e) => {
+        const btn = e.target.closest(".ctx-item");
+        if (!btn || !ctxTarget) return;
+        const action = btn.dataset.action;
+        const url = ctxTarget.url;
+        if (action === "open") {
+          window.open(url, "_blank");
+        } else if (action === "copy") {
+          navigator.clipboard?.writeText(url).catch(() => {});
+        } else if (action === "remove") {
+          const key = entryKey(ctxTarget);
+          persistRemoveEntry(ctxTarget).then(() => {
+            selectedKeys.delete(key);
+            reloadFromStore();
+          });
+        }
+        closeCtxMenu();
+      });
+
+      document.addEventListener("click", (e) => {
+        if (!e.target.closest("#ctxMenu") && !e.target.closest(".hist-menu")) {
+          closeCtxMenu();
+        }
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeCtxMenu();
+      });
+
+      document.getElementById("deleteBtn").addEventListener("click", () => {
+        deleteFromToolbar();
+      });
+
+      document.getElementById("q").addEventListener("input", () => {
+        renderList(filterEntries(document.getElementById("q").value));
+      });
+      document.getElementById("searchForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+      });
+
+      window.renderSlopHistory = function (entries, opts) {
+        const preserveSelection = opts?.preserveSelection;
+        allEntries = (entries || []).map((e) => ({
+          url: e.url,
+          title: e.title || e.url,
+          favicon: e.favicon || "",
+          visitedAt:
+            typeof e.visitedAt === "number"
+              ? e.visitedAt
+              : Number(e.visitedAt) || 0,
+        }));
+        if (!preserveSelection) {
+          selectedKeys.clear();
+          lastSelectedKey = null;
+        } else {
+          const valid = new Set(allEntries.map(entryKey));
+          for (const key of selectedKeys) {
+            if (!valid.has(key)) selectedKeys.delete(key);
+          }
+        }
+        updateToolbar();
+        renderList(filterEntries(document.getElementById("q").value));
+      };
+
+      if (window.slopApp?.onHistoryChanged) {
+        window.slopApp.onHistoryChanged(() => reloadFromStore());
+      }
+
+      reloadFromStore();
+    </script>
+  </body>
+</html>

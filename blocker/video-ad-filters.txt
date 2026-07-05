@@ -1,0 +1,6 @@
+! SlopBrowser — video / in-stream ad fixes (Brave parity)
+! Requires brave-yt-sabr-fix + uBlock scriptlets from engine resources.
+
+www.youtube.com,youtube.com,m.youtube.com,music.youtube.com,tv.youtube.com,youtubekids.com,youtube-nocookie.com##+js(brave-yt-sabr-fix)
+www.youtube.com,youtube.com,m.youtube.com,music.youtube.com,tv.youtube.com,youtubekids.com,youtube-nocookie.com##+js(json-prune, playerAds adPlacements adSlots adBreakHeartbeatParams adBreakParams playerAdParams)
+www.youtube.com,youtube.com,m.youtube.com,music.youtube.com,tv.youtube.com,youtubekids.com,youtube-nocookie.com##+js(json-prune, playerAds adPlacements adSlots adBreakHeartbeatParams, , playerResponse)

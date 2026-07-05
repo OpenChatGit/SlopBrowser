@@ -1,0 +1,6 @@
+node_modules/
+dist/
+build-info.json
+renderer/build-info.json
+*.log
+.DS_Store

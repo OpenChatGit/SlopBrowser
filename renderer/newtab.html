@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Home</title>
+    <style>
+      :root {
+        --fg: #ffffff;
+        --muted: #8b90a3;
+        --accent: #6c8cff;
+        --border: #333;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: "Inter", "Segoe UI", -apple-system, system-ui, sans-serif;
+        background: #000;
+        color: var(--fg);
+        user-select: none;
+        overflow: hidden;
+      }
+
+      /* WebGL Dot Canvas */
+      #bg {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      /* Vignette */
+      #vignette {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        background: radial-gradient(
+          circle at center,
+          rgba(0, 0, 0, 0.75) 0%,
+          rgba(0, 0, 0, 0) 100%
+        );
+        pointer-events: none;
+      }
+
+      #wrap {
+        position: fixed;
+        inset: 0;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      #searchForm {
+        width: min(680px, 92vw);
+      }
+      .search-box {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: rgba(18, 18, 18, 0.72);
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        padding: 4px 8px 4px 20px;
+        transition: border-color 0.15s, box-shadow 0.15s;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+        overflow: visible;
+      }
+      .search-box::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        z-index: 0;
+        pointer-events: none;
+      }
+      .search-box > * {
+        position: relative;
+        z-index: 1;
+      }
+      .search-box:focus-within {
+        border-color: #666;
+      }
+      .search-box .glass {
+        color: var(--muted);
+        width: 20px;
+        height: 20px;
+        flex: 0 0 auto;
+      }
+      .search-field {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: stretch;
+        min-height: 48px;
+        isolation: isolate;
+      }
+      #qGhost {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        pointer-events: none;
+        color: var(--muted);
+        font-size: 17px;
+        font-weight: 400;
+        line-height: 1.25;
+        letter-spacing: normal;
+        white-space: nowrap;
+        overflow: visible;
+        z-index: 0;
+        opacity: 1;
+        visibility: visible;
+        transition: opacity 0.12s ease, visibility 0.12s ease;
+      }
+      #qGhost.hidden {
+        opacity: 0;
+        visibility: hidden;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #qGhost {
+          transition: none;
+        }
+      }
+      #q {
+        position: relative;
+        z-index: 1;
+        flex: 1;
+        min-width: 0;
+        width: 100%;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--fg);
+        font-size: 17px;
+        font-weight: 400;
+        line-height: 1.25;
+        letter-spacing: normal;
+        padding: 14px 0;
+        margin: 0;
+        user-select: text;
+        caret-color: var(--fg);
+        color-scheme: dark;
+      }
+      .search-field.has-ghost #q {
+        color: transparent;
+        caret-color: transparent;
+      }
+      #go {
+        border: none;
+        background: #2a2a2e;
+        color: #8b90a3;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+      }
+      #go svg {
+        width: 20px;
+        height: 20px;
+      }
+      /* Active (text entered): white with a black arrow */
+      .search-box.has-text #go {
+        background: #ffffff;
+        color: #000000;
+      }
+      .search-box.has-text #go:hover {
+        filter: brightness(0.92);
+      }
+
+      .home-footer {
+        position: fixed;
+        left: 50%;
+        bottom: 12px;
+        transform: translateX(-50%);
+        z-index: 2;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 6px 14px;
+        font-size: 12px;
+        line-height: 1;
+        color: var(--muted);
+        background: rgba(18, 18, 18, 0.88);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+        pointer-events: auto;
+        user-select: text;
+        overflow: hidden;
+      }
+      .home-footer::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        z-index: 0;
+        pointer-events: none;
+      }
+      .home-footer > * {
+        position: relative;
+        z-index: 1;
+      }
+      .home-footer-sep {
+        opacity: 0.45;
+        user-select: none;
+      }
+      .home-github {
+        color: inherit;
+        text-decoration: none;
+        transition: color 0.15s ease;
+      }
+      .home-github:hover {
+        color: var(--fg);
+      }
+      .home-build {
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.02em;
+        opacity: 0.72;
+      }
+      .home-footer:not(.has-build) .home-build,
+      .home-footer:not(.has-build) .home-build-sep {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="bg"></canvas>
+    <div id="vignette"></div>
+
+    <div id="wrap">
+      <form id="searchForm">
+        <div class="search-box bg-occlude">
+          <i class="glass" data-lucide="search"></i>
+          <div class="search-field">
+            <span id="qGhost" aria-hidden="true"></span>
+            <input
+              id="q"
+              type="text"
+              spellcheck="false"
+              autocomplete="off"
+            />
+          </div>
+          <button id="go" type="submit" aria-label="Search">
+            <i data-lucide="arrow-right"></i>
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <footer class="home-footer">
+      <span id="homeBuild" class="home-build"></span>
+      <span class="home-footer-sep home-build-sep" aria-hidden="true">·</span>
+      <span id="homeVersion">v0.1.0</span>
+      <span class="home-footer-sep" aria-hidden="true">·</span>
+      <a
+        id="homeGithub"
+        class="home-github"
+        href="https://github.com/Nicol/SlopBrowser"
+        target="_blank"
+        rel="noopener noreferrer"
+        >GitHub</a
+      >
+    </footer>
+
+    <script src="lib/lucide.js"></script>
+    <script src="lib/three.min.js"></script>
+    <script>
+      try {
+        window.lucide.createIcons();
+      } catch (e) {}
+
+      /* ---------- WebGL dot background ---------- */
+      (function initBackground() {
+        const THREE = window.THREE;
+        if (!THREE) return;
+        const canvas = document.getElementById("bg");
+        const MAX_OCCLUDE = 8;
+        const OCCLUDE_GAP_PX = 1.5;
+
+        const renderer = new THREE.WebGLRenderer({
+          canvas,
+          alpha: true,
+          antialias: false,
+        });
+
+        function layoutBg(uniforms) {
+          const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
+          renderer.setPixelRatio(dpr);
+          renderer.setSize(window.innerWidth, window.innerHeight, false);
+          uniforms.u_resolution.value.set(
+            renderer.domElement.width,
+            renderer.domElement.height
+          );
+          return dpr;
+        }
+
+        const occludeRects = Array.from(
+          { length: MAX_OCCLUDE },
+          () => new THREE.Vector4()
+        );
+        const occludeRadii = new Float32Array(MAX_OCCLUDE);
+
+        function parseRadiusLength(raw, refSize) {
+          if (!raw || raw === "0" || raw === "0px") return 0;
+          const token = String(raw).trim().split(/\s+/)[0];
+          if (token.endsWith("%")) return (parseFloat(token) * 0.01) * refSize;
+          return parseFloat(token) || 0;
+        }
+
+        function elementCornerRadius(el, w, h) {
+          const s = getComputedStyle(el);
+          const ref = Math.min(w, h);
+          const radii = [
+            parseRadiusLength(s.borderTopLeftRadius, ref),
+            parseRadiusLength(s.borderTopRightRadius, ref),
+            parseRadiusLength(s.borderBottomRightRadius, ref),
+            parseRadiusLength(s.borderBottomLeftRadius, ref),
+          ];
+          return Math.min(
+            ...radii.map((rad) => Math.min(rad, w * 0.5, h * 0.5))
+          );
+        }
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+        const uniforms = {
+          u_time: { value: 0 },
+          u_resolution: {
+            value: new THREE.Vector2(1, 1),
+          },
+          u_opacities: {
+            value: [0.3, 0.3, 0.3, 0.5, 0.5, 0.5, 0.8, 0.8, 0.8, 1.0],
+          },
+          u_colors: {
+            value: [
+              new THREE.Vector3(1, 1, 1),
+              new THREE.Vector3(1, 1, 1),
+              new THREE.Vector3(1, 1, 1),
+              new THREE.Vector3(1, 1, 1),
+              new THREE.Vector3(1, 1, 1),
+              new THREE.Vector3(1, 1, 1),
+            ],
+          },
+          u_total_size: { value: 10.0 },
+          u_dot_size: { value: 2.5 },
+          u_reverse: { value: 0 },
+          u_mouse: { value: new THREE.Vector2(-9999, -9999) },
+          u_mouse_radius: { value: 60.0 },
+          u_mouse_strength: { value: 0 },
+          u_occlude_count: { value: 0 },
+          u_occlude_rects: { value: occludeRects },
+          u_occlude_radius: { value: occludeRadii },
+          u_occlude_margin: { value: OCCLUDE_GAP_PX },
+        };
+
+        function textOccludeBounds(el) {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const rects = range.getClientRects();
+          if (!rects.length) return null;
+
+          let top = Infinity;
+          let bottom = -Infinity;
+          let left = Infinity;
+          let right = -Infinity;
+
+          for (const rect of rects) {
+            if (rect.width <= 0 || rect.height <= 0) continue;
+            top = Math.min(top, rect.top);
+            bottom = Math.max(bottom, rect.bottom);
+            left = Math.min(left, rect.left);
+            right = Math.max(right, rect.right);
+          }
+
+          if (!isFinite(top)) return null;
+          return {
+            top,
+            left,
+            bottom,
+            right,
+            width: right - left,
+            height: bottom - top,
+          };
+        }
+
+        function syncOccluders() {
+          const res = uniforms.u_resolution.value;
+          const scaleX = res.x / window.innerWidth;
+          const scaleY = res.y / window.innerHeight;
+          const scale = (scaleX + scaleY) * 0.5;
+          uniforms.u_occlude_margin.value = OCCLUDE_GAP_PX * scale;
+          let count = 0;
+
+          for (const el of document.querySelectorAll(".bg-occlude")) {
+            if (count >= MAX_OCCLUDE) break;
+            const r =
+              (el.classList.contains("bg-occlude-text") &&
+                textOccludeBounds(el)) ||
+              el.getBoundingClientRect();
+            if (r.width <= 0 || r.height <= 0) continue;
+
+            const cx = (r.left + r.width * 0.5) * scaleX;
+            let cy = (r.top + r.height * 0.5) * scaleY;
+            const halfW = r.width * 0.5 * scaleX;
+            const halfH = r.height * 0.5 * scaleY;
+            if (el.classList.contains("bg-occlude-text")) {
+              cy += 3 * scaleY;
+            }
+            const scaleAvg = (scaleX + scaleY) * 0.5;
+            const radius =
+              elementCornerRadius(el, r.width, r.height) * scaleAvg;
+
+            occludeRects[count].set(cx, cy, halfW, halfH);
+            occludeRadii[count] = radius;
+            count++;
+          }
+
+          uniforms.u_occlude_count.value = count;
+        }
+
+        let bgDpr = layoutBg(uniforms);
+        syncOccluders();
+
+        const material = new THREE.ShaderMaterial({
+          vertexShader: `
+            precision mediump float;
+            uniform vec2 u_resolution;
+            out vec2 fragCoord;
+            void main() {
+              gl_Position = vec4(position, 1.0);
+              fragCoord = (position.xy + 1.0) * 0.5 * u_resolution;
+              fragCoord.y = u_resolution.y - fragCoord.y;
+            }
+          `,
+          fragmentShader: `
+            precision mediump float;
+            in vec2 fragCoord;
+
+            uniform float u_time;
+            uniform float u_opacities[10];
+            uniform vec3 u_colors[6];
+            uniform float u_total_size;
+            uniform float u_dot_size;
+            uniform vec2 u_resolution;
+            uniform int u_reverse;
+            uniform vec2 u_mouse;
+            uniform float u_mouse_radius;
+            uniform float u_mouse_strength;
+            uniform int u_occlude_count;
+            uniform vec4 u_occlude_rects[${MAX_OCCLUDE}];
+            uniform float u_occlude_radius[${MAX_OCCLUDE}];
+            uniform float u_occlude_margin;
+
+            out vec4 fragColor;
+
+            float PHI = 1.61803398874989484820459;
+            float random(vec2 xy) {
+                return fract(tan(distance(xy * PHI, xy) * 0.5) * xy.x);
+            }
+
+            float roundedBoxSDF(vec2 p, vec2 center, vec2 halfSize, float radius) {
+              vec2 local = abs(p - center) - halfSize + radius;
+              return length(max(local, 0.0)) + min(max(local.x, local.y), 0.0) - radius;
+            }
+
+            bool occluded(vec2 p) {
+              float dotReach = u_dot_size * 0.5 + u_occlude_margin;
+              for (int i = 0; i < ${MAX_OCCLUDE}; i++) {
+                if (i >= u_occlude_count) break;
+                vec4 shape = u_occlude_rects[i];
+                float dist = roundedBoxSDF(p, shape.xy, shape.zw, u_occlude_radius[i]);
+                if (dist <= dotReach) return true;
+              }
+              return false;
+            }
+
+            void main() {
+                vec2 grid_offset = vec2(
+                    abs(floor((mod(u_resolution.x, u_total_size) - u_dot_size) * 0.5)),
+                    abs(floor((mod(u_resolution.y, u_total_size) - u_dot_size) * 0.5))
+                );
+
+                vec2 st = fragCoord.xy;
+                st.x -= grid_offset.x;
+                st.y -= grid_offset.y;
+
+                float opacity = step(0.0, st.x) * step(0.0, st.y);
+
+                vec2 st2 = vec2(int(st.x / u_total_size), int(st.y / u_total_size));
+
+                vec2 cell_center = (st2 + 0.5) * u_total_size + grid_offset;
+
+                if (occluded(cell_center)) {
+                  fragColor = vec4(0.0);
+                  return;
+                }
+
+                float mouse_dist = distance(cell_center, u_mouse);
+                float mouse_near = 1.0 - smoothstep(u_mouse_radius * 0.2, u_mouse_radius, mouse_dist);
+                float mouse_boost = mouse_near * u_mouse_strength;
+                float local_dot = min(u_dot_size + mouse_boost * 2.0, u_total_size * 0.72);
+                float dot_frac = local_dot / u_total_size;
+
+                float frequency = 5.0;
+                float show_offset = random(st2);
+                float rand = random(st2 * floor((u_time / frequency) + show_offset + frequency));
+                opacity *= u_opacities[int(rand * 10.0)];
+                opacity *= 1.0 - step(dot_frac, fract(st.x / u_total_size));
+                opacity *= 1.0 - step(dot_frac, fract(st.y / u_total_size));
+
+                vec3 color = u_colors[int(show_offset * 6.0)];
+
+                float animation_speed_factor = 2.2;
+                vec2 center_grid = u_resolution / 2.0 / u_total_size;
+                float dist_from_center = distance(center_grid, st2);
+
+                float timing_offset_intro = dist_from_center * 0.006 + (random(st2) * 0.1);
+
+                float current_timing_offset = timing_offset_intro;
+                opacity *= step(current_timing_offset, u_time * animation_speed_factor);
+                opacity *= clamp((1.0 - step(current_timing_offset + 0.1, u_time * animation_speed_factor)) * 1.25, 1.0, 1.25);
+
+                fragColor = vec4(color, opacity);
+                fragColor.rgb *= fragColor.a;
+            }
+          `,
+          uniforms: uniforms,
+          glslVersion: THREE.GLSL3,
+          blending: THREE.CustomBlending,
+          blendSrc: THREE.SrcAlphaFactor,
+          blendDst: THREE.OneFactor,
+          transparent: true,
+        });
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        const startTime = performance.now();
+        let mouseTarget = 0;
+        let mouseDirty = false;
+        let pendingMouseX = -9999;
+        let pendingMouseY = -9999;
+        let animating = true;
+
+        function setMouseFromEvent(e) {
+          pendingMouseX = e.clientX;
+          pendingMouseY = e.clientY;
+          mouseDirty = true;
+          mouseTarget = 1;
+        }
+
+        document.addEventListener("mousemove", setMouseFromEvent);
+        document.addEventListener("mouseenter", setMouseFromEvent);
+        document.addEventListener("mouseleave", () => {
+          mouseTarget = 0;
+        });
+
+        document.addEventListener("visibilitychange", () => {
+          animating = !document.hidden;
+        });
+
+        if (typeof ResizeObserver !== "undefined") {
+          const occludeObserver = new ResizeObserver(() => syncOccluders());
+          occludeObserver.observe(document.body);
+          for (const el of document.querySelectorAll(".bg-occlude")) {
+            occludeObserver.observe(el);
+          }
+        }
+
+        (function animate() {
+          requestAnimationFrame(animate);
+          if (!animating) return;
+          syncOccluders();
+          if (mouseDirty) {
+            mouseDirty = false;
+            const res = uniforms.u_resolution.value;
+            const scaleX = res.x / window.innerWidth;
+            const scaleY = res.y / window.innerHeight;
+            uniforms.u_mouse.value.set(
+              pendingMouseX * scaleX,
+              pendingMouseY * scaleY
+            );
+          }
+          uniforms.u_time.value = (performance.now() - startTime) / 1000.0;
+          const strength = uniforms.u_mouse_strength.value;
+          uniforms.u_mouse_strength.value =
+            strength + (mouseTarget - strength) * 0.12;
+          renderer.render(scene, camera);
+        })();
+
+        let resizeTimer = null;
+        window.addEventListener("resize", () => {
+          clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(() => {
+            bgDpr = layoutBg(uniforms);
+            syncOccluders();
+          }, 120);
+        });
+
+        window.__syncBgOccluders = syncOccluders;
+      })();
+
+      /* ---------- Search ---------- */
+      const q = document.getElementById("q");
+      const qGhost = document.getElementById("qGhost");
+      const searchField = document.querySelector(".search-field");
+      const form = document.getElementById("searchForm");
+      const searchBox = document.querySelector(".search-box");
+
+      const Q_GHOST_PHRASES = [
+        "Search a website",
+        "Find some art",
+        "Ads be gone",
+        "Block the slop",
+        "Enter an address",
+        "Discover something new",
+        "No trackers allowed",
+        "Browse without noise",
+        "Skip the junk",
+      ];
+
+      /* Similar-width chars only — avoids layout jitter during decode. */
+      const Q_GHOST_CHARS =
+        "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+
+      function qShowsGhost() {
+        return !q.value.trim() && document.activeElement !== q;
+      }
+
+      function qGhostRandomChar() {
+        return Q_GHOST_CHARS[(Math.random() * Q_GHOST_CHARS.length) | 0];
+      }
+
+      function qGhostScramble(text, ratio) {
+        const locked = Math.floor(text.length * ratio);
+        let out = "";
+        for (let i = 0; i < text.length; i++) {
+          const ch = text[i];
+          if (ch === " ") out += " ";
+          else if (i < locked) out += ch;
+          else out += qGhostRandomChar();
+        }
+        return out;
+      }
+
+      function sizeQGhostMinWidth() {
+        if (!qGhost) return;
+        const longest = Q_GHOST_PHRASES.reduce(
+          (a, b) => (a.length >= b.length ? a : b),
+          ""
+        );
+        const probe = document.createElement("span");
+        probe.style.cssText =
+          "position:absolute;visibility:hidden;white-space:nowrap;" +
+          "font:400 17px/1.25 Inter,Segoe UI,-apple-system,system-ui,sans-serif";
+        probe.textContent = longest;
+        document.body.appendChild(probe);
+        qGhost.style.minWidth = probe.offsetWidth + "px";
+        document.body.removeChild(probe);
+        if (window.__syncBgOccluders) window.__syncBgOccluders();
+      }
+
+      function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function animateQGhost(phrase, from, to, durationMs) {
+        return new Promise((resolve) => {
+          const start = performance.now();
+          const step = (now) => {
+            if (!qGhostLoop.running) {
+              resolve();
+              return;
+            }
+            const t = Math.min(1, (now - start) / durationMs);
+            const ratio = from + (to - from) * t;
+            if (qShowsGhost() && qGhost) {
+              qGhost.textContent = qGhostScramble(phrase, ratio);
+            }
+            if (t < 1) requestAnimationFrame(step);
+            else resolve();
+          };
+          requestAnimationFrame(step);
+        });
+      }
+
+      const qGhostLoop = {
+        phraseIdx: 0,
+        running: false,
+        loopId: 0,
+
+        syncVisibility() {
+          if (!qGhost) return;
+          const show = qShowsGhost();
+          qGhost.classList.toggle("hidden", !show);
+          if (searchField) searchField.classList.toggle("has-ghost", show);
+          if (show) this.start();
+          else this.stop();
+        },
+
+        start() {
+          if (this.running) return;
+          this.running = true;
+          this.loopId++;
+          this.runLoop(this.loopId);
+        },
+
+        stop() {
+          this.running = false;
+          this.loopId++;
+        },
+
+        async runLoop(id) {
+          const reducedMotion = window.matchMedia(
+            "(prefers-reduced-motion: reduce)"
+          ).matches;
+
+          while (this.running && id === this.loopId) {
+            const phrase = Q_GHOST_PHRASES[this.phraseIdx];
+            if (reducedMotion) {
+              if (qGhost && qShowsGhost()) qGhost.textContent = phrase;
+              await sleep(4000);
+              if (!this.running || id !== this.loopId) break;
+              this.phraseIdx = (this.phraseIdx + 1) % Q_GHOST_PHRASES.length;
+              continue;
+            }
+
+            await animateQGhost(phrase, 0, 1, 720);
+            if (!this.running || id !== this.loopId || !qShowsGhost()) break;
+
+            await sleep(3000);
+            if (!this.running || id !== this.loopId || !qShowsGhost()) break;
+
+            await animateQGhost(phrase, 1, 0, 380);
+            if (!this.running || id !== this.loopId) break;
+
+            this.phraseIdx = (this.phraseIdx + 1) % Q_GHOST_PHRASES.length;
+          }
+        },
+      };
+
+      q.addEventListener("input", () => {
+        searchBox.classList.toggle("has-text", q.value.trim().length > 0);
+        qGhostLoop.syncVisibility();
+      });
+      q.addEventListener("focus", () => qGhostLoop.syncVisibility());
+      q.addEventListener("blur", () => qGhostLoop.syncVisibility());
+
+      function toURL(input) {
+        const raw = input.trim();
+        if (!raw) return null;
+        if (/^[a-z]+:\/\//i.test(raw)) return raw;
+        if (/^localhost(:\d+)?/i.test(raw)) return "http://" + raw;
+        if (/^[^\s]+\.[^\s]{2,}(\/.*)?$/.test(raw) && !raw.includes(" ")) {
+          return "https://" + raw;
+        }
+        return "https://www.google.com/search?q=" + encodeURIComponent(raw);
+      }
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const url = toURL(q.value);
+        if (url) window.location.href = url;
+      });
+
+      window.addEventListener("focus", () => q.focus());
+      sizeQGhostMinWidth();
+      qGhostLoop.syncVisibility();
+
+      function applyFooterBuildInfo(info) {
+        const build = document.getElementById("homeBuild");
+        const ver = document.getElementById("homeVersion");
+        const gh = document.getElementById("homeGithub");
+        const footer = document.querySelector(".home-footer");
+        if (!info) return;
+
+        if (build && info.buildId) {
+          build.textContent = info.buildId;
+          footer?.classList.add("has-build");
+        }
+        if (ver && info.version) {
+          ver.textContent = "v" + info.version;
+        }
+        if (gh && info.githubURL) {
+          gh.href = info.githubURL;
+        }
+      }
+
+      async function initFooterMeta() {
+        const params = new URLSearchParams(location.search);
+        const fromQuery = params.get("build");
+        if (fromQuery) {
+          applyFooterBuildInfo({
+            buildId: fromQuery,
+            version: params.get("v") || "0.1.0",
+            githubURL:
+              window.slopApp?.githubURL ||
+              "https://github.com/Nicol/SlopBrowser",
+          });
+          return;
+        }
+
+        if (window.slopApp?.buildId) {
+          applyFooterBuildInfo({
+            buildId: window.slopApp.buildId,
+            version: window.slopApp.version,
+            githubURL: window.slopApp.githubURL,
+          });
+          return;
+        }
+
+        try {
+          const res = await fetch("build-info.json", { cache: "no-store" });
+          if (res.ok) {
+            applyFooterBuildInfo(await res.json());
+          }
+        } catch (_) {}
+      }
+
+      initFooterMeta();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Slop Demo</title>
+    <style>
+      body { font-family: sans-serif; max-width: 720px; margin: 40px auto; line-height: 1.6; }
+      .real { border-left: 4px solid green; padding-left: 12px; }
+      .feed { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+      .video-card { border: 1px solid #ddd; border-radius: 10px; padding: 10px; }
+      .video-card video, .video-card .thumb {
+        width: 100%; height: 150px; background: #222; border-radius: 6px; display: block;
+      }
+      .badge { display: inline-block; font-size: 12px; background: #eee; border-radius: 4px; padding: 2px 6px; margin-top: 6px; }
+    </style>
+  </head>
+  <body>
+    <h1>SlopBrowser Test Page</h1>
+
+    <p class="real">
+      This paragraph is normal human writing. It talks about a specific bug we
+      fixed on Tuesday where the login button did not respond on Safari 16 due to
+      a missing event listener. Nothing fancy, just facts about the actual code.
+    </p>
+
+    <h2>Should be blocked (AI slop):</h2>
+
+    <p>
+      In today's fast-paced digital age, it's important to note that harnessing
+      the power of synergy can truly unlock the potential of your business. As we
+      delve into the ever-evolving landscape of innovation, we must foster a
+      sense of collaboration. In conclusion, this is a testament to the rich
+      tapestry of modern enterprise, and it's worth noting that we should embark
+      on a journey to revolutionize the way we work.
+    </p>
+
+    <p>
+      Certainly! Here are 10 ways to elevate your productivity that you won't
+      believe. Moreover, these cutting-edge, state-of-the-art tips play a crucial
+      role in navigating the complex world of remote work. Furthermore, they
+      underscore the importance of a myriad of seamless solutions. I hope this
+      helps! Keep reading to discover more.
+    </p>
+
+    <ul>
+      <li>&#9989; Boost your workflow with AI-driven insights</li>
+      <li>&#128640; Skyrocket your growth to the moon</li>
+      <li>&#128161; Unlock hidden productivity secrets</li>
+      <li>&#128293; Ignite your passion for success</li>
+    </ul>
+
+    <h2>AI video feed (slop videos should be blocked):</h2>
+
+    <div class="feed">
+      <!-- 1. Explicit data attribute + caption (should block) -->
+      <div class="video-card">
+        <video poster="clip1.jpg" data-content-type="ai-generated"></video>
+        <div class="badge">AI-generated</div>
+      </div>
+
+      <!-- 2. YouTube-style disclosure label (should block) -->
+      <div class="video-card">
+        <video poster="clip2.jpg"></video>
+        <div class="badge">Altered or synthetic content</div>
+        <p>How the pyramids were really built</p>
+      </div>
+
+      <!-- 3. Generator named in caption (should block) -->
+      <div class="video-card">
+        <video poster="clip3.jpg"></video>
+        <p>Cinematic dragon flyover — made with OpenAI Sora</p>
+      </div>
+
+      <!-- 4. AI media host in src (should block) -->
+      <div class="video-card">
+        <video src="https://videos.openai.com/sora/abc123.mp4"></video>
+        <p>Neon city timelapse</p>
+      </div>
+
+      <!-- 5. Real human video (should NOT block) -->
+      <div class="video-card">
+        <video poster="clip5.jpg"></video>
+        <p>Raw handheld footage of our hiking trip in the Alps, June 2024.</p>
+      </div>
+    </div>
+
+    <h2>Should NOT be blocked (real content):</h2>
+
+    <p class="real">
+      The function returns null when the cache is empty. We added a guard clause
+      on line 42 to avoid a null pointer exception. Tested on Chrome 120 and it
+      passed all 14 unit tests. The PR is linked in the ticket.
+    </p>
+  </body>
+</html>

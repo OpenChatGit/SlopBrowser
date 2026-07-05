@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:;" />
+    <title>SlopBrowser</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="titlebar">
+      <div id="tabs"></div>
+      <button id="newTab" class="icon-btn" title="New tab">
+        <i data-lucide="plus"></i>
+      </button>
+      <div id="dragspace"></div>
+      <div id="winctrls">
+        <button id="min" class="win-btn" title="Minimize" aria-label="Minimize">
+          <i data-lucide="minus"></i>
+        </button>
+        <button id="max" class="win-btn" title="Maximize" aria-label="Maximize">
+          <i class="ico-max" data-lucide="square"></i>
+          <i class="ico-restore" data-lucide="copy"></i>
+        </button>
+        <button id="close" class="win-btn win-close" title="Close" aria-label="Close">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+    </div>
+
+    <div id="toolbar">
+      <div class="tb-side tb-left">
+        <button id="sideRailToggle" class="nav-btn" title="Hide sidebar" type="button">
+          <i data-lucide="panel-left-close"></i>
+        </button>
+        <button id="back" class="nav-btn" title="Back">
+          <i data-lucide="arrow-left"></i>
+        </button>
+        <button id="forward" class="nav-btn" title="Forward">
+          <i data-lucide="arrow-right"></i>
+        </button>
+        <button id="reload" class="nav-btn" title="Reload">
+          <i data-lucide="rotate-cw"></i>
+        </button>
+      </div>
+      <div id="addressCluster">
+        <button
+          id="bookmarkBtn"
+          class="nav-btn bookmark-btn"
+          type="button"
+          title="Bookmark this page"
+          aria-label="Bookmark this page"
+          disabled
+        >
+          <i data-lucide="bookmark"></i>
+        </button>
+        <form id="urlForm">
+        <input
+          id="url"
+          type="text"
+          spellcheck="false"
+          placeholder="Search the web"
+          autocomplete="off"
+        />
+        <div id="slopWrap">
+          <button
+            type="button"
+            id="slopBadge"
+            class="on"
+            title="AI filter"
+            aria-label="AI filter"
+            aria-haspopup="true"
+          >
+            <svg id="slopLogo" viewBox="0 0 215 238" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M101.682 168.635C105.62 167.927 107.59 165.981 107.59 162.796C107.59 159.492 106.515 155.835 104.367 151.825C102.338 147.696 99.295 143.803 95.2373 140.146C84.6156 130.708 70.2345 125.99 52.0941 125.99C43.1432 125.99 34.7891 127.464 27.0316 130.413C18.7968 126.285 12.2329 119.737 7.33972 110.772C2.44657 101.806 0 92.1328 0 81.7517C0 54.6191 11.4571 33.6798 34.3714 18.9338C54.0633 6.31128 78.35 0 107.231 0C128.714 0 146.794 2.30037 161.474 6.90112C176.153 11.3839 188.147 17.1643 197.456 24.2424C200.201 32.0283 201.574 40.109 201.574 48.4848C201.574 56.8605 200.44 64.4694 198.172 71.3115C195.905 78.1537 192.623 83.6392 188.326 87.768C184.269 84.8188 176.929 81.8107 166.307 78.7435C155.686 75.6763 146.019 74.1428 137.306 74.1428C128.594 74.1428 122.746 74.6736 119.763 75.7353C116.898 76.797 115.466 78.4486 115.466 80.69C115.466 81.7517 115.645 82.7544 116.003 83.6981C120.18 82.6364 125.551 82.1056 132.115 82.1056C155.387 82.1056 174.363 87.5321 189.042 98.3851C206.347 111.362 215 130.826 215 156.779C215 179.665 205.631 198.658 186.894 213.758C166.606 229.919 139.335 238 105.083 238C86.2268 238 69.8765 236.584 56.0325 233.753C42.1885 231.04 28.7025 226.203 15.5745 219.243C6.62365 206.385 2.14821 193.349 2.14821 180.137C2.14821 166.806 6.74299 155.776 15.9326 147.047C25.1221 138.317 36.4002 133.952 49.7669 133.952C63.2528 133.952 74.2326 136.666 82.7061 142.092C91.2989 147.519 97.6242 156.366 101.682 168.635Z" fill="currentColor"/>
+            </svg>
+          </button>
+          <div id="slopPanel" class="hidden" role="menu">
+            <div class="slop-head">
+              <span id="slopStatusDot"></span>
+              <span id="slopStatusText">Protection active</span>
+            </div>
+            <div class="filter-stats-section">
+              <span class="filter-stats-title">AI filter</span>
+              <div class="filter-stats">
+                <div class="filter-stat">
+                  <span class="filter-num" id="slopPageCount">0</span>
+                  <span class="filter-lbl">On this page</span>
+                </div>
+                <div class="filter-stat">
+                  <span class="filter-num" id="slopTotalCount">0</span>
+                  <span class="filter-lbl">This session</span>
+                </div>
+              </div>
+            </div>
+            <div class="filter-stats-section">
+              <span class="filter-stats-title">Ad blocker</span>
+              <div class="filter-stats">
+                <div class="filter-stat">
+                  <span class="filter-num" id="adPageCount">0</span>
+                  <span class="filter-lbl">On this page</span>
+                </div>
+                <div class="filter-stat">
+                  <span class="filter-num" id="adTotalCount">0</span>
+                  <span class="filter-lbl">This session</span>
+                </div>
+              </div>
+            </div>
+            <div class="menu-sep"></div>
+            <button type="button" class="menu-item" id="slopToggle" role="menuitem">
+              <i data-lucide="shield-check"></i><span>AI filter</span>
+              <span id="slopSwitchState" class="menu-state">ON</span>
+            </button>
+            <button type="button" class="menu-item" id="adBlockToggle" role="menuitem">
+              <i data-lucide="ban"></i><span>Ad blocker</span>
+              <span id="adBlockSwitchState" class="menu-state">ON</span>
+            </button>
+          </div>
+        </div>
+      </form>
+      </div>
+
+      <div class="tb-side tb-right">
+        <div id="menuWrap">
+          <button id="menuBtn" class="nav-btn" title="Menu" aria-haspopup="true">
+            <i data-lucide="menu"></i>
+          </button>
+          <div id="menu" class="hidden" role="menu">
+            <button class="menu-item" data-action="newtab" role="menuitem">
+              <i data-lucide="plus"></i><span>New tab</span><kbd>Ctrl+T</kbd>
+            </button>
+            <button class="menu-item" data-action="newwindow" role="menuitem">
+              <i data-lucide="app-window"></i><span>New window</span><kbd>Ctrl+N</kbd>
+            </button>
+            <button class="menu-item" data-action="newprivate" role="menuitem">
+              <i data-lucide="venetian-mask"></i><span>New Private Tab</span>
+              <kbd>Ctrl+Shift+P</kbd>
+            </button>
+            <div class="menu-sep"></div>
+            <div class="menu-sub-wrap" id="historySubWrap">
+              <button
+                type="button"
+                class="menu-item menu-sub"
+                data-action="history"
+                role="menuitem"
+                aria-haspopup="true"
+              >
+                <i data-lucide="history"></i><span>History</span>
+                <i data-lucide="chevron-left" class="menu-chevron"></i>
+              </button>
+              <div id="historySubmenu" class="menu-submenu" role="menu">
+                <button
+                  type="button"
+                  class="menu-item"
+                  data-action="history-open"
+                  role="menuitem"
+                >
+                  <i data-lucide="history"></i><span>Open history page</span
+                  ><kbd>Ctrl+H</kbd>
+                </button>
+                <div class="menu-sep"></div>
+                <div class="menu-submenu-label">Recent tabs</div>
+                <div id="historyRecentList" class="menu-submenu-list"></div>
+              </div>
+            </div>
+            <div class="menu-sub-wrap" id="bookmarksSubWrap">
+              <button
+                type="button"
+                class="menu-item menu-sub"
+                data-action="bookmarks"
+                role="menuitem"
+                aria-haspopup="true"
+              >
+                <i data-lucide="book-marked"></i><span>Bookmarks and lists</span>
+                <i data-lucide="chevron-left" class="menu-chevron"></i>
+              </button>
+              <div id="bookmarksSubmenu" class="menu-submenu" role="menu">
+                <button
+                  type="button"
+                  class="menu-item"
+                  id="bookmarksThisTab"
+                  data-action="bookmarks-this-tab"
+                  role="menuitem"
+                >
+                  <i data-lucide="bookmark-plus"></i><span>Bookmark this tab</span>
+                </button>
+                <button
+                  type="button"
+                  class="menu-item"
+                  id="bookmarksAllTabs"
+                  data-action="bookmarks-all-tabs"
+                  role="menuitem"
+                >
+                  <i data-lucide="book-copy"></i><span>Bookmark all tabs</span>
+                </button>
+                <div class="menu-sep"></div>
+                <div class="menu-submenu-label">Bookmarks</div>
+                <div id="bookmarksSavedList" class="menu-submenu-list"></div>
+              </div>
+            </div>
+            <button class="menu-item" data-action="downloads" role="menuitem">
+              <i data-lucide="download"></i><span>Downloads</span><kbd>Ctrl+J</kbd>
+            </button>
+            <div class="menu-sep"></div>
+            <button class="menu-item" data-action="reload" role="menuitem">
+              <i data-lucide="rotate-cw"></i><span>Reload</span><kbd>Ctrl+R</kbd>
+            </button>
+            <div class="menu-sep"></div>
+            <button class="menu-item" data-action="togglesidebar" role="menuitem">
+              <i data-lucide="panel-left"></i><span>Toggle sidebar</span>
+            </button>
+            <button class="menu-item" data-action="cookies" role="menuitem">
+              <i data-lucide="cookie"></i><span>Cookies</span>
+            </button>
+            <button class="menu-item" data-action="devtools" role="menuitem">
+              <i data-lucide="code"></i><span>DevTools</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="chromeBody">
+      <aside id="sideRail" aria-label="Sidebar">
+        <div id="sideRailItems"></div>
+      </aside>
+
+      <div id="contentArea">
+        <aside id="sidePanel" class="hidden" aria-label="Integration panel">
+          <header class="side-panel-head">
+            <div class="side-panel-brand">
+              <span class="side-panel-icon" aria-hidden="true"></span>
+              <span class="side-panel-title"></span>
+            </div>
+            <button type="button" class="side-panel-close" title="Close panel">
+              <i data-lucide="x"></i>
+            </button>
+          </header>
+          <div id="sidePanelViews"></div>
+          <div id="sidePanelResize" class="side-panel-resize" title="Resize panel"></div>
+        </aside>
+
+        <div id="viewsFrame">
+          <div class="private-border-overlay" aria-hidden="true"></div>
+          <div id="zoomIndicator" aria-live="polite" aria-hidden="true">100%</div>
+          <div id="views"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="sidePanelResizeShield" class="side-panel-resize-shield hidden" aria-hidden="true"></div>
+
+    <div id="cookieOverlay" class="hidden" aria-hidden="true">
+      <div id="cookiePanel" role="dialog" aria-labelledby="cookieTitle">
+        <div class="cookie-head">
+          <h2 id="cookieTitle">Cookies</h2>
+          <button id="cookieClose" class="cookie-icon-btn" title="Close" type="button">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <p id="cookieScope" class="cookie-scope"></p>
+        <div class="cookie-toolbar">
+          <label class="cookie-filter">
+            <input type="checkbox" id="cookieSiteOnly" checked />
+            <span>Only this site</span>
+          </label>
+          <div class="cookie-toolbar-actions">
+            <button id="cookieClearSite" class="cookie-btn" type="button">Clear site</button>
+            <button id="cookieClearAll" class="cookie-btn cookie-btn-danger" type="button">
+              Clear all
+            </button>
+          </div>
+        </div>
+        <div id="cookieList" class="cookie-list"></div>
+        <p id="cookieEmpty" class="cookie-empty hidden">No cookies found.</p>
+      </div>
+    </div>
+
+    <script src="lib/lucide.js"></script>
+    <script src="renderer.js"></script>
+  </body>
+</html>
