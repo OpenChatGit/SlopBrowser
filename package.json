@@ -28,8 +28,11 @@
     "electron-reload": "^2.0.0-alpha.1"
   },
   "dependencies": {
+    "@openrouter/sdk": "^0.13.43",
     "adblock-rs": "^0.12.5",
     "cross-fetch": "^4.1.0",
-    "lucide": "^1.23.0"
+    "dompurify": "^3.4.12",
+    "lucide": "^1.23.0",
+    "marked": "^18.0.6"
   }
 }

@@ -1,5 +1,5 @@
 /** URL, favicon, icon, and string helpers. */
-import { HOME, HISTORY, DOWNLOADS, HISTORY_DISPLAY, DOWNLOADS_DISPLAY } from "./shared.js";
+import { HOME, HISTORY, DOWNLOADS, SETTINGS, HISTORY_DISPLAY, DOWNLOADS_DISPLAY, SETTINGS_DISPLAY } from "./shared.js";
 
 export function isHome(url) {
   if (!url) return true;
@@ -32,9 +32,20 @@ export function isDownloadsPage(url) {
   }
 }
 
+export function isSettingsPage(url) {
+  if (!url) return false;
+  try {
+    return new URL(url).pathname === new URL(SETTINGS).pathname;
+  } catch (_) {
+    const base = SETTINGS.split("?")[0];
+    return url === SETTINGS || url.startsWith(base);
+  }
+}
+
 export function displayURL(url) {
   if (isHistoryPage(url)) return HISTORY_DISPLAY;
   if (isDownloadsPage(url)) return DOWNLOADS_DISPLAY;
+  if (isSettingsPage(url)) return SETTINGS_DISPLAY;
   return url;
 }
 

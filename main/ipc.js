@@ -1,4 +1,6 @@
 const { ipcMain, BrowserWindow, webContents } = require("electron");
+const fs = require("fs");
+const path = require("path");
 const { getBuildInfo } = require("../build-info");
 const { notifyHistoryChanged } = require("./notifications");
 const { sesFromPartition } = require("./session-config");
@@ -17,10 +19,14 @@ function registerIpc(deps) {
     historyStore,
     bookmarkStore,
     downloadManager,
+    agentSettingsStore,
     createWindow,
     getCachedBuildInfo,
     setCachedBuildInfo,
   } = deps;
+
+  const { streamChat } = require("./slopai-service");
+  const { listAgentModels } = require("./agent-models-service");
 
   ipcMain.on("app:getBuildInfo", (event) => {
     let info = getCachedBuildInfo();
@@ -36,6 +42,21 @@ function registerIpc(deps) {
       }
     }
     event.returnValue = info;
+  });
+
+  let youtubePatchCache = null;
+  ipcMain.on("blocker:getYoutubePatchSync", (event) => {
+    if (youtubePatchCache === null) {
+      try {
+        youtubePatchCache = fs.readFileSync(
+          path.join(__dirname, "..", "blocker", "youtube-video-patch.js"),
+          "utf8"
+        );
+      } catch (_) {
+        youtubePatchCache = "";
+      }
+    }
+    event.returnValue = youtubePatchCache;
   });
 
   ipcMain.on("window:minimize", (e) => {
@@ -184,6 +205,42 @@ function registerIpc(deps) {
   ipcMain.handle("bookmarks:toggle", (_e, entry) => bookmarkStore.toggle(entry));
 
   downloadManager.registerIpc(ipcMain);
+
+  ipcMain.handle("agentSettings:get", () => agentSettingsStore.get());
+  ipcMain.handle("agentSettings:set", (_e, data) => agentSettingsStore.set(data));
+
+  ipcMain.handle("agentSettings:listModels", async (_e, overrides = {}) => {
+    const settings = { ...agentSettingsStore.get(), ...(overrides && typeof overrides === "object" ? overrides : {}) };
+    try {
+      const models = await listAgentModels(settings);
+      return { ok: true, models };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err), models: [] };
+    }
+  });
+
+  ipcMain.handle("slopai:stream", async (event, { requestId, messages } = {}) => {
+    const settings = agentSettingsStore.get();
+    const id = requestId || `${Date.now()}`;
+    const wc = event.sender;
+    const emit = (payload) => {
+      if (!wc.isDestroyed()) wc.send("slopai:stream", { requestId: id, ...payload });
+    };
+
+    try {
+      const text = await streamChat({
+        ...settings,
+        messages,
+        onDelta: (delta) => emit({ type: "chunk", delta }),
+      });
+      emit({ type: "done", text });
+      return { ok: true, requestId: id };
+    } catch (err) {
+      const error = err?.message || String(err);
+      emit({ type: "error", error });
+      return { ok: false, error, requestId: id };
+    }
+  });
 
   ipcMain.handle("webview:setBackground", (_e, webContentsId) => {
     const wc = webContents.fromId(webContentsId);

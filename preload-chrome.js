@@ -22,6 +22,7 @@ let zoomChangedCb = null;
 let historyChangedCb = null;
 let downloadChangedCb = null;
 let downloadStartedCb = null;
+let slopAiStreamCb = null;
 ipcRenderer.on("slop:openURL", (_e, url) => openURLCb?.(url));
 ipcRenderer.on("slop:openSideURL", (_e, payload) => openSideURLCb?.(payload));
 ipcRenderer.on("slop:shortcut", (_e, key) => shortcutCb?.(key));
@@ -31,6 +32,7 @@ ipcRenderer.on("slop:zoomChanged", (_e, payload) => zoomChangedCb?.(payload));
 ipcRenderer.on("slop:historyChanged", () => historyChangedCb?.());
 ipcRenderer.on("slop:downloadChanged", () => downloadChangedCb?.());
 ipcRenderer.on("slop:downloadStarted", (_e, payload) => downloadStartedCb?.(payload));
+ipcRenderer.on("slopai:stream", (_e, payload) => slopAiStreamCb?.(payload));
 
 const chromeUA = (() => {
   const v = process.versions.chrome || "131.0.0.0";
@@ -54,11 +56,15 @@ const historyURL = pathToFileURL(
 const downloadsURL = pathToFileURL(
   path.join(__dirname, "renderer", "downloads.html")
 ).href;
+const settingsURL = pathToFileURL(
+  path.join(__dirname, "renderer", "settings.html")
+).href;
 
 contextBridge.exposeInMainWorld("slopAPI", {
   newTabURL,
   historyURL,
   downloadsURL,
+  settingsURL,
   buildId: buildInfo.buildId,
   version: buildInfo.version,
 
@@ -171,5 +177,35 @@ contextBridge.exposeInMainWorld("slopAPI", {
     add: (entry) => ipcRenderer.invoke("bookmarks:add", entry),
     remove: (url) => ipcRenderer.invoke("bookmarks:remove", url),
     toggle: (entry) => ipcRenderer.invoke("bookmarks:toggle", entry),
+  },
+
+  agentSettings: {
+    get: () => ipcRenderer.invoke("agentSettings:get"),
+    set: (data) => ipcRenderer.invoke("agentSettings:set", data),
+    listModels: (opts) => ipcRenderer.invoke("agentSettings:listModels", opts || {}),
+  },
+
+  slopAi: {
+    stream: (payload, handlers = {}) => {
+      const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const activeId = requestId;
+      const onEvent = (msg) => {
+        if (!msg || msg.requestId !== activeId) return;
+        if (msg.type === "chunk" && msg.delta) handlers.onChunk?.(msg.delta);
+        if (msg.type === "done") {
+          cleanup();
+          handlers.onDone?.(msg.text || "");
+        }
+        if (msg.type === "error") {
+          cleanup();
+          handlers.onError?.(msg.error || "Request failed");
+        }
+      };
+      const cleanup = () => {
+        if (slopAiStreamCb === onEvent) slopAiStreamCb = null;
+      };
+      slopAiStreamCb = onEvent;
+      return ipcRenderer.invoke("slopai:stream", { ...payload, requestId: activeId });
+    },
   },
 });

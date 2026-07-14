@@ -131,9 +131,13 @@ import {
   HOME,
   HISTORY,
   DOWNLOADS,
+  SETTINGS,
   PARTITION,
   HOME_ADDRESS_PLACEHOLDER,
   DEFAULT_ADDRESS_PLACEHOLDER,
+  HISTORY_DISPLAY,
+  DOWNLOADS_DISPLAY,
+  SETTINGS_DISPLAY,
   LOGO_SVG,
   GLOBE_SVG,
   X_SVG,
@@ -145,6 +149,7 @@ import {
   BROWSE_HISTORY_MAX,
   BOOKMARKS_MENU_MAX,
   DOWNLOADS_MENU_MAX,
+  SLOPAI_CHATS_MENU_MAX,
   DOWNLOAD_RING_R,
   DOWNLOAD_RING_C,
   SIDE_RAIL_ITEMS,
@@ -167,6 +172,7 @@ import {
   isHome,
   isHistoryPage,
   isDownloadsPage,
+  isSettingsPage,
   displayURL,
   pickFavicon,
   faviconFallback,
@@ -180,6 +186,10 @@ import {
   updateRailIconSizes,
   toURL,
 } from "../js/utils.js";
+
+import { renderMarkdown, enhanceMarkdown } from "../js/markdown.js";
+
+import { PAGE_CONTEXT_EXTRACTOR, buildSlopAiApiMessages } from "../js/page-context.js";
 
 import { api } from "../js/registry.js";
 
@@ -202,6 +212,7 @@ export function startChrome() {
   refreshBrowseHistory();
   refreshBookmarks();
   refreshDownloads();
+  loadSlopAiChats();
   window.slopAPI.onHistoryChanged(() => {
     refreshBrowseHistory();
     for (const tab of tabs) {
@@ -243,6 +254,9 @@ Object.assign(api, {
   openSidePanel,
   closeSidePanel,
   fitActiveSideWebview,
+  toggleSlopAiPanel,
+  closeSlopAiPanel,
+  openSlopAiChat,
   bookmarkThisTab,
   bookmarkAllTabs,
 });

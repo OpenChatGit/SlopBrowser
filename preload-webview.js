@@ -3,8 +3,6 @@
  * Network blocking stays in main via adblock-service; this handles in-page hiding.
  */
 const { ipcRenderer, contextBridge } = require("electron");
-const fs = require("fs");
-const path = require("path");
 
 const pkg = require("./package.json");
 const repoRaw =
@@ -17,12 +15,6 @@ const githubURL = repoRaw
   .replace(/\.git$/, "");
 
 function resolveBuildInfo() {
-  try {
-    const { readPublicBuildInfo } = require("./build-info");
-    const fromFile = readPublicBuildInfo();
-    if (fromFile) return fromFile;
-  } catch (_) {}
-
   try {
     const fromIpc = ipcRenderer.sendSync("app:getBuildInfo");
     if (fromIpc?.buildId) return fromIpc;
@@ -66,6 +58,11 @@ try {
       removeMany: (ids) => ipcRenderer.invoke("downloads:removeMany", ids),
       clear: () => ipcRenderer.invoke("downloads:clear"),
     },
+    agentSettings: {
+      get: () => ipcRenderer.invoke("agentSettings:get"),
+      set: (data) => ipcRenderer.invoke("agentSettings:set", data),
+      listModels: (opts) => ipcRenderer.invoke("agentSettings:listModels", opts || {}),
+    },
   });
 
   // Fallback for file:// pages when direct IPC from the guest is unavailable.
@@ -84,16 +81,21 @@ try {
 
 const STYLE_ID = "slop-cosmetic-css";
 const DARK_BASE_ID = "slop-dark-base";
+const SCROLLBAR_STYLE_ID = "slop-scrollbar-css";
 const HREF_POLL_MS = 800;
 const MUTATION_THROTTLE_MS = 250;
 
-let ytPatchCode = "";
-try {
-  ytPatchCode = fs.readFileSync(
-    path.join(__dirname, "blocker", "youtube-video-patch.js"),
-    "utf8"
-  );
-} catch (_) {}
+let ytPatchCode = null;
+
+function getYoutubePatchCode() {
+  if (ytPatchCode !== null) return ytPatchCode;
+  try {
+    ytPatchCode = ipcRenderer.sendSync("blocker:getYoutubePatchSync") || "";
+  } catch (_) {
+    ytPatchCode = "";
+  }
+  return ytPatchCode;
+}
 
 function isYouTubeHost(href) {
   try {
@@ -175,6 +177,28 @@ function applyDarkBase() {
   } catch (_) {}
 }
 
+const SCROLLBAR_CSS =
+  "html{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.14) transparent}" +
+  "*::-webkit-scrollbar{width:5px;height:5px}" +
+  "*::-webkit-scrollbar-track{background:transparent}" +
+  "*::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:999px}" +
+  "*::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22)}" +
+  "*::-webkit-scrollbar-corner{background:transparent}";
+
+function applyScrollbarStyle() {
+  try {
+    const root = document.documentElement;
+    if (!root) return;
+    let el = document.getElementById(SCROLLBAR_STYLE_ID);
+    if (!el) {
+      el = document.createElement("style");
+      el.id = SCROLLBAR_STYLE_ID;
+      root.appendChild(el);
+    }
+    el.textContent = SCROLLBAR_CSS;
+  } catch (_) {}
+}
+
 function injectHideSelectorsEarly(selectors) {
   if (!selectors?.length) return;
   let el = document.getElementById(STYLE_ID);
@@ -190,6 +214,7 @@ function injectHideSelectorsEarly(selectors) {
 
 function bootstrapEarlyBlockers(force = false) {
   applyDarkBase();
+  applyScrollbarStyle();
 
   const href = location.href;
   if (!href || href === "about:blank" || !/^https?:/i.test(href)) return false;
@@ -232,8 +257,9 @@ function bootstrapEarlyBlockers(force = false) {
 }
 
 function injectYouTubeVideoPatch(href) {
-  if (!ytPatchCode || !isYouTubeHost(href)) return;
-  injectPageScript(ytPatchCode);
+  const code = getYoutubePatchCode();
+  if (!code || !isYouTubeHost(href)) return;
+  injectPageScript(code);
 }
 
 let active = false;
@@ -619,6 +645,7 @@ function onNavigation() {
   hiddenSelectors.clear();
   syncStylesheet();
   applyDarkBase();
+  applyScrollbarStyle();
 
   if (isFullNavigation(prev, href)) {
     bootstrapRes = null;
@@ -631,6 +658,7 @@ function onNavigation() {
 }
 
 function boot() {
+  applyScrollbarStyle();
   lastHref = location.href;
   if (/^https?:/i.test(lastHref)) {
     bootstrapEarlyBlockers(true);
@@ -674,6 +702,8 @@ function boot() {
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", boot, { once: true });
+  document.addEventListener("DOMContentLoaded", applyScrollbarStyle, { once: true });
 } else {
   boot();
 }
+applyScrollbarStyle();

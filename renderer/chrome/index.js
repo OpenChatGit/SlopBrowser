@@ -6,9 +6,13 @@ import {
   HOME,
   HISTORY,
   DOWNLOADS,
+  SETTINGS,
   PARTITION,
   HOME_ADDRESS_PLACEHOLDER,
   DEFAULT_ADDRESS_PLACEHOLDER,
+  HISTORY_DISPLAY,
+  DOWNLOADS_DISPLAY,
+  SETTINGS_DISPLAY,
   LOGO_SVG,
   GLOBE_SVG,
   X_SVG,
@@ -20,6 +24,7 @@ import {
   BROWSE_HISTORY_MAX,
   BOOKMARKS_MENU_MAX,
   DOWNLOADS_MENU_MAX,
+  SLOPAI_CHATS_MENU_MAX,
   DOWNLOAD_RING_R,
   DOWNLOAD_RING_C,
   SIDE_RAIL_ITEMS,
@@ -42,6 +47,7 @@ import {
   isHome,
   isHistoryPage,
   isDownloadsPage,
+  isSettingsPage,
   displayURL,
   pickFavicon,
   faviconFallback,
@@ -55,6 +61,10 @@ import {
   updateRailIconSizes,
   toURL,
 } from "../js/utils.js";
+
+import { renderMarkdown, enhanceMarkdown } from "../js/markdown.js";
+
+import { PAGE_CONTEXT_EXTRACTOR, buildSlopAiApiMessages } from "../js/page-context.js";
 
 import { api } from "../js/registry.js";
 
@@ -80,13 +90,34 @@ function syncAddressBar(url) {
 }
 
 function canBookmark(url) {
-  if (!url || isHome(url) || isHistoryPage(url) || isDownloadsPage(url)) return false;
+  if (!url || isHome(url) || isHistoryPage(url) || isDownloadsPage(url) || isSettingsPage(url))
+    return false;
   try {
     const u = new URL(url);
     return u.protocol === "http:" || u.protocol === "https:" || u.protocol === "file:";
   } catch (_) {
     return false;
   }
+}
+
+function isGoogleSearchPage(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./i, "").toLowerCase();
+    const isGoogleHost =
+      host === "google.com" ||
+      host.endsWith(".google.com") ||
+      /^google\.[a-z.]{2,10}$/.test(host);
+    if (!isGoogleHost) return false;
+    const path = u.pathname.replace(/\/+$/, "") || "/";
+    return path === "/search" || path === "/" || path === "/webhp";
+  } catch (_) {
+    return false;
+  }
+}
+
+function canSummarizePage(url) {
+  return canBookmark(url) && !isGoogleSearchPage(url);
 }
 
 function syncBookmarkButton(url) {
@@ -310,7 +341,7 @@ function closeTab(id) {
   const idx = tabs.findIndex((t) => t.id === id);
   if (idx === -1) return;
   const [tab] = tabs.splice(idx, 1);
-  if (!isHome(tab.url) && !isHistoryPage(tab.url) && !isDownloadsPage(tab.url)) {
+  if (!isHome(tab.url) && !isHistoryPage(tab.url) && !isDownloadsPage(tab.url) && !isSettingsPage(tab.url)) {
     closedTabs.unshift(historyEntryFromTab(tab));
     if (closedTabs.length > 25) closedTabs.pop();
   }
@@ -345,6 +376,7 @@ function setActive(id) {
   updatePrivateChrome();
   renderSideRail();
   refreshFilterPanelCounts();
+  updateSlopAiSummarizeButton();
 }
 
 /*
@@ -356,6 +388,7 @@ function setActive(id) {
 function buildTabEl(t) {
   const root = document.createElement("div");
   root.className = "tab";
+  root.dataset.tabId = String(t.id);
 
   const overlay = document.createElement("div");
   overlay.className = "private-border-overlay";
@@ -373,20 +406,34 @@ function buildTabEl(t) {
   const close = document.createElement("span");
   close.className = "close";
   close.innerHTML = X_SVG;
-  close.onclick = (e) => {
-    e.stopPropagation();
-    closeTab(t.id);
-  };
 
   surface.appendChild(icon);
   surface.appendChild(title);
   surface.appendChild(close);
   root.appendChild(overlay);
   root.appendChild(surface);
-  root.onclick = () => setActive(t.id);
 
   return { root, surface, icon, title, iconKey: null };
 }
+
+function scheduleCloseTab(id) {
+  queueMicrotask(() => closeTab(id));
+}
+
+els.tabs?.addEventListener("click", (e) => {
+  const closeBtn = e.target.closest(".tab .close");
+  if (closeBtn) {
+    e.stopPropagation();
+    e.preventDefault();
+    const tabId = Number(closeBtn.closest(".tab")?.dataset.tabId);
+    if (Number.isFinite(tabId)) scheduleCloseTab(tabId);
+    return;
+  }
+  const root = e.target.closest(".tab");
+  if (!root) return;
+  const tabId = Number(root.dataset.tabId);
+  if (Number.isFinite(tabId)) setActive(tabId);
+});
 
 function updateTabIcon(t, refs) {
   const key = isHome(t.url) ? "home" : t.favicon || "globe";
@@ -426,6 +473,7 @@ function renderTabs() {
       refs = buildTabEl(t);
       tabEls.set(t.id, refs);
     }
+    refs.root.dataset.tabId = String(t.id);
 
     const tabGlow =
       t.private && t.id === activeId && !isHome(t.url);
@@ -499,11 +547,13 @@ function wireWebview(tab) {
     bindWebContentsId();
     if (isHistoryPage(tab.url)) injectHistoryPage(tab);
     if (isDownloadsPage(tab.url)) injectDownloadsPage(tab);
+    if (isSettingsPage(tab.url)) injectSettingsPage(tab);
   });
 
   wv.addEventListener("did-finish-load", () => {
     if (isHistoryPage(tab.url)) injectHistoryPage(tab);
     if (isDownloadsPage(tab.url)) injectDownloadsPage(tab);
+    if (isSettingsPage(tab.url)) injectSettingsPage(tab);
   });
 
   wv.addEventListener("page-title-updated", (e) => {
@@ -514,10 +564,13 @@ function wireWebview(tab) {
         ? "History"
         : isDownloadsPage(href)
           ? "Downloads"
-          : e.title;
+          : isSettingsPage(href)
+            ? "Settings"
+            : e.title;
     if (next === tab.title) return;
     tab.title = next;
     updateTabPresentation(tab);
+    if (tab.id === activeId) updateSlopAiSummarizeButton();
   });
 
   wv.addEventListener("page-favicon-updated", (e) => {
@@ -526,6 +579,7 @@ function wireWebview(tab) {
       tab.favicon = icon;
       updateTabPresentation(tab);
       syncDownloadFaviconsForTab(tab).catch(() => {});
+      if (tab.id === activeId) updateSlopAiSummarizeButton();
     }
   });
 
@@ -551,7 +605,7 @@ function wireWebview(tab) {
     else if (isDownloadsPage(tab.url)) {
       tab.title = "Downloads";
       if (tab.id === activeId) dismissDownloadIndicator();
-    }
+    } else if (isSettingsPage(tab.url)) tab.title = "Settings";
     pushSessionHistory(tab);
     if (tab.id === activeId) {
       syncAddressBar(tab.url);
@@ -559,6 +613,7 @@ function wireWebview(tab) {
       updateNavButtons();
       updatePrivateChrome();
       updateTabPresentation(tab);
+      updateSlopAiSummarizeButton();
     } else {
       updateTabPresentation(tab);
       updateTabChromeClasses();
@@ -570,6 +625,7 @@ function wireWebview(tab) {
     if (tab.id === activeId) {
       syncAddressBar(tab.url);
       syncBookmarkButton(tab.url);
+      updateSlopAiSummarizeButton();
     }
   });
 
@@ -697,7 +753,8 @@ function historyEntryFromTab(tab) {
 }
 
 function pushSessionHistory(tab) {
-  if (isHome(tab.url) || isHistoryPage(tab.url) || isDownloadsPage(tab.url)) return;
+  if (isHome(tab.url) || isHistoryPage(tab.url) || isDownloadsPage(tab.url) || isSettingsPage(tab.url))
+    return;
   const entry = historyEntryFromTab(tab);
   if (sessionHistory[0]?.url === entry.url) {
     sessionHistory[0] = entry;
@@ -781,6 +838,20 @@ async function injectDownloadsPage(tab) {
     .catch(() => {});
 }
 
+function injectSettingsPage(tab) {
+  const payload = JSON.stringify({
+    version: window.slopAPI.version,
+    buildId: window.slopAPI.buildId,
+  });
+  tab.webview
+    .executeJavaScript(
+      "(function(d){function apply(){if(typeof window.renderSlopSettings==='function'){window.renderSlopSettings(d);return true}return false}if(!apply())document.addEventListener('DOMContentLoaded',function(){apply()},{once:true})})(" +
+        payload +
+        ")"
+    )
+    .catch(() => {});
+}
+
 function openHistoryPage() {
   toggleMenu(false);
   const tab = activeTab();
@@ -804,20 +875,31 @@ function openDownloadsPage() {
   }
 }
 
+function openSettingsPage() {
+  toggleMenu(false);
+  const tab = activeTab();
+  if (tab) {
+    Promise.resolve(tab.webview.loadURL(SETTINGS)).catch(() => {});
+    tab.webview.focus();
+  } else {
+    createTab(SETTINGS);
+  }
+}
+
 function historyRecentItems() {
   const items = [];
   const seen = new Set();
 
   closedTabs.forEach((entry, i) => {
     if (items.length >= HISTORY_RECENT_MAX) return;
-    if (!entry?.url || isHome(entry.url) || isHistoryPage(entry.url) || isDownloadsPage(entry.url)) return;
+    if (!entry?.url || isHome(entry.url) || isHistoryPage(entry.url) || isDownloadsPage(entry.url) || isSettingsPage(entry.url)) return;
     seen.add(entry.url);
     items.push({ ...entry, closed: true, showShortcut: i === 0 });
   });
 
   for (const entry of browseHistory) {
     if (items.length >= HISTORY_RECENT_MAX) break;
-    if (!entry?.url || isHome(entry.url) || isHistoryPage(entry.url) || isDownloadsPage(entry.url)) continue;
+    if (!entry?.url || isHome(entry.url) || isHistoryPage(entry.url) || isDownloadsPage(entry.url) || isSettingsPage(entry.url)) continue;
     if (seen.has(entry.url)) continue;
     seen.add(entry.url);
     items.push({
@@ -1020,13 +1102,13 @@ function tabForDownload(entry) {
   const host = hostFromUrl(ref);
   if (host) {
     for (const t of tabs) {
-      if (isHome(t.url) || isHistoryPage(t.url) || isDownloadsPage(t.url)) continue;
+      if (isHome(t.url) || isHistoryPage(t.url) || isDownloadsPage(t.url) || isSettingsPage(t.url)) continue;
       if (hostFromUrl(t.url) === host) return t;
     }
   }
   if (entry.state === "progressing") {
     const a = activeTab();
-    if (a && !isHome(a.url) && !isHistoryPage(a.url) && !isDownloadsPage(a.url)) {
+    if (a && !isHome(a.url) && !isHistoryPage(a.url) && !isDownloadsPage(a.url) && !isSettingsPage(a.url)) {
       return a;
     }
   }
@@ -1219,6 +1301,546 @@ function renderDownloadsSubmenu() {
   renderIcons(list);
 }
 
+/* ---------- SlopAI chats (menu + panel) ---------- */
+const SLOPAI_CHATS_KEY = "slop-ai-chats";
+const SLOPAI_CHATS_MAX = 50;
+let slopAiChats = [];
+let activeSlopAiChatId = null;
+let slopAiStreaming = false;
+let slopAiStreamText = "";
+let slopAiStreamContent = null;
+
+function loadSlopAiChats() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SLOPAI_CHATS_KEY));
+    slopAiChats = Array.isArray(raw)
+      ? raw.filter((c) => c && c.id && c.title)
+      : [];
+  } catch (_) {
+    slopAiChats = [];
+  }
+  slopAiChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+function saveSlopAiChats() {
+  try {
+    localStorage.setItem(
+      SLOPAI_CHATS_KEY,
+      JSON.stringify(slopAiChats.slice(0, SLOPAI_CHATS_MAX))
+    );
+  } catch (_) {}
+}
+
+function newSlopAiChatId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function slopAiChatHasMessages(chat) {
+  return Array.isArray(chat?.messages) && chat.messages.length > 0;
+}
+
+function getOrCreateEmptySlopAiChat() {
+  if (activeSlopAiChatId) {
+    const active = slopAiChats.find((c) => c.id === activeSlopAiChatId);
+    if (active && !slopAiChatHasMessages(active)) return active;
+  }
+  const empty = slopAiChats.find((c) => !slopAiChatHasMessages(c));
+  if (empty) return empty;
+  return createSlopAiChat();
+}
+
+function createSlopAiChat(title = "New chat") {
+  const chat = {
+    id: newSlopAiChatId(),
+    title: String(title || "New chat").trim() || "New chat",
+    updatedAt: Date.now(),
+    messages: [],
+  };
+  slopAiChats.unshift(chat);
+  if (slopAiChats.length > SLOPAI_CHATS_MAX) slopAiChats.length = SLOPAI_CHATS_MAX;
+  saveSlopAiChats();
+  return chat;
+}
+
+function touchSlopAiChat(id) {
+  const chat = slopAiChats.find((c) => c.id === id);
+  if (!chat) return null;
+  chat.updatedAt = Date.now();
+  slopAiChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  saveSlopAiChats();
+  return chat;
+}
+
+function chatTitleFromText(text) {
+  const t = String(text || "").trim();
+  if (!t) return "New chat";
+  const line = t.split(/\n/)[0].trim();
+  return line.length > 42 ? line.slice(0, 42) + "…" : line;
+}
+
+function clearSlopAiStreamUI() {
+  slopAiStreamText = "";
+  slopAiStreamContent = null;
+}
+
+function beginSlopAiStreamUI() {
+  const list = slopAiMessagesEl();
+  if (!list) return;
+  list.querySelector(".slopai-msg-loading")?.remove();
+  clearSlopAiStreamUI();
+  const row = buildSlopAiMessageEl({ role: "assistant", text: "" });
+  row.classList.add("slopai-msg-streaming");
+  slopAiStreamContent = row.querySelector(".slopai-md");
+  if (slopAiStreamContent) slopAiStreamContent.classList.add("slopai-md-streaming");
+  list.appendChild(row);
+  scrollSlopAiToBottom();
+}
+
+function appendSlopAiStream(delta) {
+  if (!delta) return;
+  slopAiStreamText += delta;
+  if (slopAiStreamContent) slopAiStreamContent.textContent = slopAiStreamText;
+  scrollSlopAiToBottom();
+}
+
+function finishSlopAiStreamUI() {
+  if (slopAiStreamContent && slopAiStreamText) {
+    slopAiStreamContent.classList.remove("slopai-md-streaming");
+    slopAiStreamContent.textContent = "";
+    slopAiStreamContent.innerHTML = renderMarkdown(slopAiStreamText);
+    enhanceMarkdown(slopAiStreamContent);
+    slopAiStreamContent.closest(".slopai-msg-streaming")?.classList.remove("slopai-msg-streaming");
+  }
+  clearSlopAiStreamUI();
+}
+
+function showSlopAiStreamError(message) {
+  const list = slopAiMessagesEl();
+  list?.querySelector(".slopai-msg-loading")?.remove();
+  if (slopAiStreamContent) {
+    slopAiStreamContent.classList.add("slopai-md-error");
+    slopAiStreamContent.classList.remove("slopai-md-streaming");
+    slopAiStreamContent.textContent = message;
+    slopAiStreamContent.closest(".slopai-msg-streaming")?.classList.remove("slopai-msg-streaming");
+  } else if (list) {
+    list.appendChild(
+      buildSlopAiMessageEl({
+        role: "assistant",
+        text: message,
+        error: true,
+      })
+    );
+  }
+  clearSlopAiStreamUI();
+  scrollSlopAiToBottom();
+}
+
+function slopAiStreamPromise(payload) {
+  return new Promise((resolve, reject) => {
+    let text = "";
+    window.slopAPI.slopAi
+      .stream(payload, {
+        onChunk: (delta) => {
+          if (!slopAiStreamContent) beginSlopAiStreamUI();
+          appendSlopAiStream(delta);
+        },
+        onDone: (full) => {
+          text = full || slopAiStreamText;
+          resolve(text);
+        },
+        onError: (error) => reject(new Error(error || "Request failed")),
+      })
+      .then((res) => {
+        if (!res?.ok && !text) reject(new Error(res?.error || "Request failed"));
+      })
+      .catch(reject);
+  });
+}
+
+function scrollSlopAiToBottom() {
+  const body = els.slopAiBody;
+  if (!body) return;
+  requestAnimationFrame(() => {
+    body.scrollTop = body.scrollHeight;
+  });
+}
+
+function slopAiMessagesEl() {
+  if (!els.slopAiBody) return null;
+  let list = els.slopAiBody.querySelector(".slopai-messages");
+  if (!list) {
+    els.slopAiBody.replaceChildren();
+    list = document.createElement("div");
+    list.className = "slopai-messages";
+    els.slopAiBody.appendChild(list);
+  }
+  return list;
+}
+
+function buildSlopAiMessageEl(msg) {
+  const row = document.createElement("div");
+  if (msg.role === "user") {
+    row.className = "slopai-msg slopai-msg-user";
+    const bubble = document.createElement("div");
+    bubble.className = "slopai-bubble";
+    bubble.textContent = msg.text || "";
+    row.appendChild(bubble);
+    return row;
+  }
+
+  row.className = "slopai-msg slopai-msg-assistant";
+  if (msg.role === "loading") {
+    row.classList.add("slopai-msg-loading");
+  }
+  const content = document.createElement("div");
+  content.className = "slopai-md";
+  if (msg.role === "loading") {
+    content.classList.add("slopai-typing");
+    content.innerHTML =
+      '<span class="slopai-dot"></span><span class="slopai-dot"></span><span class="slopai-dot"></span>';
+    row.appendChild(content);
+    return row;
+  }
+  if (msg.error) {
+    content.classList.add("slopai-md-error");
+    content.textContent = msg.text || "Something went wrong.";
+  } else {
+    content.innerHTML = renderMarkdown(msg.text || "");
+    enhanceMarkdown(content);
+  }
+  row.appendChild(content);
+  return row;
+}
+
+function renderSlopAiMessages(chat) {
+  const list = slopAiMessagesEl();
+  if (!list || !chat) return;
+  list.replaceChildren();
+  const msgs = Array.isArray(chat.messages) ? chat.messages : [];
+  for (const m of msgs) {
+    list.appendChild(buildSlopAiMessageEl(m));
+  }
+  if (slopAiStreaming) {
+    list.appendChild(buildSlopAiMessageEl({ role: "loading" }));
+  }
+  scrollSlopAiToBottom();
+}
+
+function renderSlopAiPanel(chat) {
+  if (els.slopAiInput) els.slopAiInput.value = "";
+  updateSlopAiComposerSend();
+  resizeSlopAiInput();
+  if (chat) renderSlopAiMessages(chat);
+  else if (els.slopAiBody) els.slopAiBody.replaceChildren();
+}
+
+function updateSlopAiComposerSend() {
+  const btn = els.slopAiSend;
+  const input = els.slopAiInput;
+  if (!btn || !input) return;
+  const hasText = !!input.value.trim();
+  const canSend = hasText && !slopAiStreaming;
+  btn.disabled = !canSend;
+  btn.classList.toggle("ready", canSend);
+}
+
+function resizeSlopAiInput() {
+  const input = els.slopAiInput;
+  if (!input) return;
+  input.style.height = "auto";
+  input.style.height = input.scrollHeight + "px";
+}
+
+function fillSlopAiTabIcon(wrap, tab) {
+  if (!wrap || !tab) return;
+  wrap.replaceChildren();
+  wrap.classList.remove("slopai-summarize-icon-fallback");
+
+  const candidates = [];
+  const push = (url) => {
+    if (url && !candidates.includes(url)) candidates.push(url);
+  };
+  push(tab.favicon);
+  push(faviconFallback(tab.url));
+
+  if (!candidates.length) {
+    wrap.classList.add("slopai-summarize-icon-fallback");
+    wrap.innerHTML = GLOBE_SVG;
+    return;
+  }
+
+  const img = document.createElement("img");
+  img.className = "slopai-summarize-icon-img";
+  img.alt = "";
+  img.referrerPolicy = "no-referrer";
+  let idx = 0;
+  img.onerror = () => {
+    idx += 1;
+    if (idx < candidates.length) {
+      img.src = candidates[idx];
+      return;
+    }
+    wrap.classList.add("slopai-summarize-icon-fallback");
+    wrap.innerHTML = GLOBE_SVG;
+  };
+  img.src = candidates[0];
+  wrap.appendChild(img);
+}
+
+function fillSlopAiSummarizeIcon(tab) {
+  fillSlopAiTabIcon(els.slopAiSummarizeIcon, tab);
+}
+
+async function extractSlopAiPageContext(tab) {
+  if (!tab?.webview || !canSummarizePage(tab.url)) return null;
+  try {
+    const raw = await tab.webview.executeJavaScript(PAGE_CONTEXT_EXTRACTOR, true);
+    if (!raw || typeof raw !== "object") return null;
+    return {
+      title: String(raw.title || tab.title || "").trim(),
+      url: String(raw.url || tab.url || "").trim(),
+      description: String(raw.description || "").trim(),
+      text: String(raw.text || "").trim(),
+      truncated: !!raw.truncated,
+      extractedAt: Date.now(),
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+function updateSlopAiContextUI() {
+  const wrap = els.slopAiContextWrap;
+  if (!wrap) return;
+  const tab = activeTab();
+  const show = slopAiPanelOpen && !!(tab && canSummarizePage(tab.url));
+  wrap.classList.toggle("hidden", !show);
+  if (!show) return;
+  fillSlopAiTabIcon(els.slopAiContextIcon, tab);
+  const label = els.slopAiContextLabel;
+  if (label) label.textContent = tab.title || "Current page";
+  wrap.title = tab.url || "AI has context from this page";
+}
+
+function updateSlopAiSummarizeButton() {
+  const wrap = els.slopAiSummarizeWrap;
+  if (!wrap) return;
+  const tab = activeTab();
+  const show = slopAiPanelOpen && !!(tab && canSummarizePage(tab.url));
+  wrap.classList.toggle("hidden", !show);
+  if (show) fillSlopAiSummarizeIcon(tab);
+  updateSlopAiContextUI();
+}
+
+async function summarizeSlopAiPageContent() {
+  const tab = activeTab();
+  if (!tab || !canSummarizePage(tab.url) || slopAiStreaming) return;
+  if (!activeSlopAiChatId) openSlopAiChat();
+  if (!activeSlopAiChatId) return;
+  await sendSlopAiMessage("Summarize the content of this page.");
+}
+
+async function sendSlopAiMessage(presetText) {
+  const input = els.slopAiInput;
+  if (slopAiStreaming) return;
+  const text = (typeof presetText === "string" ? presetText : input?.value || "").trim();
+  if (!text) return;
+  if (!activeSlopAiChatId) openSlopAiChat();
+  if (!activeSlopAiChatId) return;
+  const chat = slopAiChats.find((c) => c.id === activeSlopAiChatId);
+  if (!chat) return;
+
+  if (!Array.isArray(chat.messages)) chat.messages = [];
+  chat.messages.push({ role: "user", text, at: Date.now() });
+  if (!chat.title || chat.title === "New chat") {
+    chat.title = chatTitleFromText(text);
+  }
+  saveSlopAiChats();
+  touchSlopAiChat(activeSlopAiChatId);
+
+  if (typeof presetText !== "string" && input) {
+    input.value = "";
+    resizeSlopAiInput();
+  }
+  updateSlopAiComposerSend();
+  renderSlopAiMessages(chat);
+
+  slopAiStreaming = true;
+  updateSlopAiComposerSend();
+  renderSlopAiMessages(chat);
+
+  const tab = activeTab();
+  const pageContext = await extractSlopAiPageContext(tab);
+  const apiMessages = buildSlopAiApiMessages(
+    chat.messages.filter((m) => (m.role === "user" || m.role === "assistant") && !m.error),
+    pageContext
+  );
+
+  beginSlopAiStreamUI();
+
+  try {
+    const reply = await slopAiStreamPromise({ messages: apiMessages });
+    finishSlopAiStreamUI();
+    chat.messages.push({ role: "assistant", text: reply, at: Date.now() });
+    saveSlopAiChats();
+    touchSlopAiChat(activeSlopAiChatId);
+  } catch (err) {
+    const message = err?.message || "Something went wrong.";
+    showSlopAiStreamError(message);
+    chat.messages.push({
+      role: "assistant",
+      text: message,
+      error: true,
+      at: Date.now(),
+    });
+    saveSlopAiChats();
+  } finally {
+    slopAiStreaming = false;
+    updateSlopAiComposerSend();
+    if (!els.menu.classList.contains("hidden")) renderSlopAiSubmenu();
+  }
+}
+
+function focusSlopAiComposer() {
+  requestAnimationFrame(() => els.slopAiInput?.focus());
+}
+
+function updateSlopAiChrome() {
+  const btn = els.slopAiCloseChat;
+  if (!btn) return;
+  btn.classList.toggle("visible", slopAiPanelOpen);
+  btn.setAttribute("aria-hidden", slopAiPanelOpen ? "false" : "true");
+  if (slopAiPanelOpen) {
+    renderIcons(btn);
+    renderIcons(els.slopAiComposer);
+  }
+  updateSlopAiSummarizeButton();
+}
+
+function switchSlopAiChat(id) {
+  loadSlopAiChats();
+  const chat = touchSlopAiChat(id) || slopAiChats.find((c) => c.id === id);
+  if (!chat) return;
+  activeSlopAiChatId = chat.id;
+  renderSlopAiPanel(chat);
+  if (!slopAiPanelOpen) {
+    toggleSlopAiPanel(true);
+  } else {
+    updateSlopAiChrome();
+    focusSlopAiComposer();
+  }
+  if (!els.menu.classList.contains("hidden")) renderSlopAiSubmenu();
+}
+
+function openSlopAiChat(id) {
+  loadSlopAiChats();
+  let chat = null;
+  if (id) {
+    chat = touchSlopAiChat(id) || slopAiChats.find((c) => c.id === id);
+  } else {
+    chat = getOrCreateEmptySlopAiChat();
+  }
+  if (!chat) return;
+
+  activeSlopAiChatId = chat.id;
+  renderSlopAiPanel(chat);
+  if (slopAiPanelOpen) {
+    updateSlopAiChrome();
+    focusSlopAiComposer();
+  } else {
+    toggleSlopAiPanel(true);
+  }
+  if (!els.menu.classList.contains("hidden")) renderSlopAiSubmenu();
+}
+
+function slopAiRecentItems() {
+  loadSlopAiChats();
+  return slopAiChats.slice(0, SLOPAI_CHATS_MENU_MAX);
+}
+
+function removeSlopAiChat(id) {
+  const sid = String(id || "");
+  if (!sid) return;
+  loadSlopAiChats();
+  const before = slopAiChats.length;
+  slopAiChats = slopAiChats.filter((c) => c.id !== sid);
+  if (slopAiChats.length === before) return;
+  saveSlopAiChats();
+
+  const wasActive = activeSlopAiChatId === sid;
+  if (wasActive) {
+    const next = slopAiChats[0];
+    if (next) {
+      switchSlopAiChat(next.id);
+    } else {
+      activeSlopAiChatId = null;
+      closeSlopAiPanel();
+    }
+  }
+
+  requestAnimationFrame(() => {
+    if (!els.menu.classList.contains("hidden")) renderSlopAiSubmenu();
+    keepSubmenuOpen(els.slopAiSubWrap);
+  });
+}
+
+function scheduleRemoveSlopAiChat(id) {
+  requestAnimationFrame(() => removeSlopAiChat(id));
+}
+
+function renderSlopAiSubmenu() {
+  const list = els.slopAiRecentList;
+  if (!list) return;
+  list.replaceChildren();
+  const items = slopAiRecentItems();
+
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "menu-submenu-empty";
+    empty.textContent = "No chats yet";
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const chat of items) {
+    const row = document.createElement("div");
+    row.className = "menu-recent-row";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "menu-item menu-recent";
+    btn.dataset.action = "slopai-open-chat-id";
+    btn.dataset.id = chat.id;
+    btn.setAttribute("role", "menuitem");
+
+    const iconWrap = document.createElement("span");
+    iconWrap.className = "menu-recent-icon-wrap menu-recent-fallback slopai-menu-icon";
+    iconWrap.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+
+    const label = document.createElement("span");
+    label.className = "menu-recent-label";
+    label.textContent = truncate(chat.title, 32);
+
+    btn.appendChild(iconWrap);
+    btn.appendChild(label);
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "menu-recent-delete";
+    del.dataset.action = "slopai-delete-chat";
+    del.dataset.id = chat.id;
+    del.title = "Delete chat";
+    del.setAttribute("aria-label", "Delete chat");
+    del.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>';
+
+    row.appendChild(btn);
+    row.appendChild(del);
+    list.appendChild(row);
+  }
+}
+
 function renderDownloadPanel() {
   const list = els.downloadPanelList;
   if (!list) return;
@@ -1367,11 +1989,13 @@ function toggleMenu(force) {
     renderHistorySubmenu();
     renderBookmarksSubmenu();
     renderDownloadsSubmenu();
+    renderSlopAiSubmenu();
     renderIcons(els.menu);
   } else {
     els.historySubWrap?.classList.remove("sub-open");
     els.bookmarksSubWrap?.classList.remove("sub-open");
     els.downloadsSubWrap?.classList.remove("sub-open");
+    els.slopAiSubWrap?.classList.remove("sub-open");
   }
   els.menu.classList.toggle("hidden", !show);
 }
@@ -1383,18 +2007,26 @@ els.menuBtn.onclick = (e) => {
 
 function wireSubmenuHover(wrap, onEnter) {
   if (!wrap) return;
-  let closeTimer = null;
+  wrap._submenuCloseTimer = null;
   wrap.addEventListener("mouseenter", () => {
-    clearTimeout(closeTimer);
-    closeTimer = null;
+    clearTimeout(wrap._submenuCloseTimer);
+    wrap._submenuCloseTimer = null;
     onEnter?.();
     wrap.classList.add("sub-open");
   });
-  wrap.addEventListener("mouseleave", () => {
-    closeTimer = setTimeout(() => {
-      wrap.classList.remove("sub-open");
+  wrap.addEventListener("mouseleave", (e) => {
+    if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
+    wrap._submenuCloseTimer = setTimeout(() => {
+      if (!wrap.matches(":hover")) wrap.classList.remove("sub-open");
     }, 120);
   });
+}
+
+function keepSubmenuOpen(wrap) {
+  if (!wrap) return;
+  clearTimeout(wrap._submenuCloseTimer);
+  wrap._submenuCloseTimer = null;
+  wrap.classList.add("sub-open");
 }
 
 wireSubmenuHover(els.historySubWrap, () => renderHistorySubmenu());
@@ -1403,12 +2035,19 @@ wireSubmenuHover(els.downloadsSubWrap, () => {
   dismissDownloadIndicator();
   renderDownloadsSubmenu();
 });
+wireSubmenuHover(els.slopAiSubWrap, () => renderSlopAiSubmenu());
 
 els.menu.addEventListener("click", (e) => {
   const item = e.target.closest(".menu-item");
   if (!item) return;
   const action = item.dataset.action;
-  if (action === "history" || action === "bookmarks" || action === "downloads") return;
+  if (
+    action === "history" ||
+    action === "bookmarks" ||
+    action === "downloads" ||
+    action === "slopai"
+  )
+    return;
   if (action === "bookmarks-this-tab") {
     bookmarkThisTab();
     toggleMenu(false);
@@ -1460,6 +2099,16 @@ els.menu.addEventListener("click", (e) => {
     toggleMenu(false);
     return;
   }
+  if (action === "slopai-open-chat") {
+    openSlopAiChat();
+    toggleMenu(false);
+    return;
+  }
+  if (action === "slopai-open-chat-id") {
+    openSlopAiChat(item.dataset.id);
+    toggleMenu(false);
+    return;
+  }
   if (action === "newtab") createTab(HOME);
   else if (action === "newwindow") window.slopAPI.newWindow({});
   else if (action === "newprivate") createTab(HOME, { private: true });
@@ -1469,6 +2118,10 @@ els.menu.addEventListener("click", (e) => {
     setRailCollapsed(!document.body.classList.contains("rail-collapsed"));
   else if (action === "devtools")
     activeTab() && activeTab().webview.openDevTools();
+  else if (action === "settings") {
+    openSettingsPage();
+    return;
+  }
   toggleMenu(false);
 });
 
@@ -1621,8 +2274,10 @@ document.addEventListener("keydown", (e) => {
     els.historySubWrap?.classList.remove("sub-open");
     els.bookmarksSubWrap?.classList.remove("sub-open");
     els.downloadsSubWrap?.classList.remove("sub-open");
+    els.slopAiSubWrap?.classList.remove("sub-open");
     closeDownloadPanel();
     toggleSlopPanel(false);
+    toggleSlopAiPanel(false);
     toggleCookieManager(false);
   }
 });
@@ -2052,6 +2707,7 @@ els.sideRailToggle.onclick = () =>
 els.sidePanelClose.onclick = () => closeSidePanel();
 
 let sidePanelResizeActive = false;
+let slopAiResizeActive = false;
 let windowResizeTimer = null;
 
 setSidePanelWidth(getSidePanelWidth());
@@ -2064,10 +2720,11 @@ if (els.sidePanelViews) {
 }
 
 window.addEventListener("resize", () => {
-  if (sidePanelResizeActive) return;
+  if (sidePanelResizeActive || slopAiResizeActive) return;
   clearTimeout(windowResizeTimer);
   windowResizeTimer = setTimeout(() => {
     setSidePanelWidth(getSidePanelWidth());
+    setSlopAiPanelWidth(getSlopAiPanelWidth());
   }, 120);
 });
 
@@ -2139,6 +2796,164 @@ if (els.sidePanelResize) {
   els.sidePanelResize.addEventListener("pointerdown", beginSidePanelResize);
 }
 
+/* ---------- SlopAI panel (right sidebar) ---------- */
+const SLOPAI_PANEL_MIN_W = 300;
+const SLOPAI_PANEL_MAX_RATIO = 0.45;
+const SLOPAI_PANEL_DEFAULT_W = 380;
+let slopAiPanelOpen = false;
+
+function getSlopAiPanelWidth() {
+  try {
+    const w = parseInt(localStorage.getItem("slop-slopai-panel-width"), 10);
+    return Number.isFinite(w) ? w : SLOPAI_PANEL_DEFAULT_W;
+  } catch (_) {
+    return SLOPAI_PANEL_DEFAULT_W;
+  }
+}
+
+function clampSlopAiPanelWidth(px) {
+  const max = Math.max(SLOPAI_PANEL_MIN_W, Math.floor(window.innerWidth * SLOPAI_PANEL_MAX_RATIO));
+  return Math.max(SLOPAI_PANEL_MIN_W, Math.min(max, px));
+}
+
+function setSlopAiPanelWidth(px, opts = {}) {
+  const w = clampSlopAiPanelWidth(px);
+  document.documentElement.style.setProperty("--slopai-panel-width", w + "px");
+  if (!opts.skipPersist) {
+    try {
+      localStorage.setItem("slop-slopai-panel-width", String(w));
+    } catch (_) {}
+  }
+  return w;
+}
+
+function closeSlopAiPanel() {
+  if (!els.slopAiPanel) return;
+  if (slopAiResizeActive) endSlopAiPanelResize();
+  els.slopAiPanel.classList.add("hidden");
+  if (els.slopAiResizeShield) els.slopAiResizeShield.classList.add("hidden");
+  slopAiPanelOpen = false;
+  updateSlopAiChrome();
+  window.slopAPI.setWebviewsPointerPassthrough(false).catch(() => {});
+}
+
+function toggleSlopAiPanel(force) {
+  if (!els.slopAiPanel) return;
+  const show = force ?? els.slopAiPanel.classList.contains("hidden");
+  if (show) {
+    toggleMenu(false);
+    closeDownloadPanel();
+    toggleSlopPanel(false);
+    els.slopAiPanel.classList.remove("hidden");
+    slopAiPanelOpen = true;
+    updateSlopAiChrome();
+    focusSlopAiComposer();
+    return;
+  }
+  closeSlopAiPanel();
+}
+
+function endSlopAiPanelResize() {
+  if (!slopAiResizeActive) return;
+  slopAiResizeActive = false;
+  document.body.classList.remove("slopai-panel-resizing");
+  if (els.slopAiResizeShield) {
+    els.slopAiResizeShield.classList.add("hidden");
+  }
+  window.slopAPI.setWebviewsPointerPassthrough(false).catch(() => {});
+  setSlopAiPanelWidth(els.slopAiPanel.offsetWidth);
+}
+
+function beginSlopAiPanelResize(e) {
+  if (e.button !== 0 || slopAiResizeActive) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  slopAiResizeActive = true;
+  const pointerId = e.pointerId;
+  const startX = e.clientX;
+  const startW = els.slopAiPanel.offsetWidth;
+  const shield = els.slopAiResizeShield;
+
+  document.body.classList.add("slopai-panel-resizing");
+  if (shield) shield.classList.remove("hidden");
+  window.slopAPI.setWebviewsPointerPassthrough(true).catch(() => {});
+
+  const onMove = (ev) => {
+    if (!slopAiResizeActive || ev.pointerId !== pointerId) return;
+    setSlopAiPanelWidth(startW + (startX - ev.clientX), { skipPersist: true });
+  };
+
+  const onEnd = (ev) => {
+    if (ev.type === "pointerup" && ev.pointerId !== pointerId) return;
+    for (const el of [els.slopAiResize, shield]) {
+      if (!el) continue;
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onEnd);
+      el.removeEventListener("pointercancel", onEnd);
+      el.removeEventListener("lostpointercapture", onEnd);
+    }
+    window.removeEventListener("blur", onEnd);
+    try {
+      els.slopAiResize.releasePointerCapture(pointerId);
+    } catch (_) {}
+    endSlopAiPanelResize();
+  };
+
+  for (const el of [els.slopAiResize, shield]) {
+    if (!el) continue;
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onEnd);
+    el.addEventListener("pointercancel", onEnd);
+    el.addEventListener("lostpointercapture", onEnd);
+  }
+  window.addEventListener("blur", onEnd, { once: true });
+
+  try {
+    els.slopAiResize.setPointerCapture(pointerId);
+  } catch (_) {}
+}
+
+setSlopAiPanelWidth(getSlopAiPanelWidth());
+updateSlopAiComposerSend();
+els.slopAiCloseChat?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  closeSlopAiPanel();
+});
+
+els.slopAiRecentList?.addEventListener("mousedown", (e) => {
+  const delBtn = e.target.closest("[data-action='slopai-delete-chat']");
+  if (!delBtn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  scheduleRemoveSlopAiChat(delBtn.dataset.id);
+});
+
+els.slopAiSummarize?.addEventListener("click", () => {
+  summarizeSlopAiPageContent();
+});
+
+els.slopAiComposer?.addEventListener("submit", (e) => {
+  e.preventDefault();
+  sendSlopAiMessage();
+});
+
+els.slopAiInput?.addEventListener("input", () => {
+  updateSlopAiComposerSend();
+  resizeSlopAiInput();
+});
+
+els.slopAiInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendSlopAiMessage();
+  }
+});
+
+if (els.slopAiResize) {
+  els.slopAiResize.addEventListener("pointerdown", beginSlopAiPanelResize);
+}
+
 setRailCollapsed(loadRailCollapsed());
 renderSideRail();
 
@@ -2149,6 +2964,7 @@ export function startChrome() {
   refreshBrowseHistory();
   refreshBookmarks();
   refreshDownloads();
+  loadSlopAiChats();
   window.slopAPI.onHistoryChanged(() => {
     refreshBrowseHistory();
     for (const tab of tabs) {
@@ -2190,6 +3006,9 @@ Object.assign(api, {
   openSidePanel,
   closeSidePanel,
   fitActiveSideWebview,
+  toggleSlopAiPanel,
+  closeSlopAiPanel,
+  openSlopAiChat,
   bookmarkThisTab,
   bookmarkAllTabs,
 });

@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Settings</title>
+    <style>
+      :root {
+        --fg: #ffffff;
+        --muted: #8b90a3;
+        --accent: #6c8cff;
+        --border: #333;
+        --bg: #0e0f13;
+        --surface: rgba(18, 18, 18, 0.88);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: "Inter", "Segoe UI", -apple-system, system-ui, sans-serif;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+      }
+      #layout {
+        display: flex;
+        align-items: flex-start;
+        gap: 28px;
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 28px 20px 48px;
+      }
+      #sidebar {
+        flex: 0 0 148px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding-top: 4px;
+        position: sticky;
+        top: 28px;
+      }
+      .nav-btn {
+        width: 100%;
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 13px;
+        line-height: 1.2;
+        text-align: left;
+        padding: 9px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition:
+          color 0.15s ease,
+          background 0.15s ease;
+      }
+      .nav-btn:hover {
+        color: var(--fg);
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .nav-btn.active {
+        color: var(--fg);
+        background: rgba(255, 255, 255, 0.08);
+      }
+      #content {
+        flex: 1;
+        min-width: 0;
+      }
+      .panel {
+        display: none;
+      }
+      .panel.active {
+        display: block;
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 28px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .lead {
+        margin: 0 0 24px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 4px 0;
+        margin-bottom: 16px;
+      }
+      .section-title {
+        padding: 14px 18px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px 18px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .section .row:first-of-type,
+      .section .field:first-of-type {
+        border-top: none;
+      }
+      .row-label {
+        min-width: 0;
+        flex: 1;
+      }
+      .row-label strong {
+        display: block;
+        font-size: 14px;
+        font-weight: 500;
+        margin-bottom: 2px;
+      }
+      .row-label span {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+      .row-value {
+        flex-shrink: 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .placeholder-note {
+        padding: 14px 18px 16px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+      .field {
+        padding: 12px 18px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .field-label {
+        display: block;
+        font-size: 14px;
+        font-weight: 500;
+        margin-bottom: 4px;
+      }
+      .field-hint {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.4;
+        margin-bottom: 10px;
+      }
+      .field-input {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--fg);
+        font: inherit;
+        font-size: 13px;
+        padding: 9px 12px;
+        outline: none;
+        transition: border-color 0.15s ease;
+      }
+      .field-input:focus {
+        border-color: rgba(108, 140, 255, 0.55);
+      }
+      .field-input::placeholder {
+        color: var(--muted);
+      }
+
+      /* Provider pick — same look as burger menu dropdown */
+      .pick-wrap {
+        position: relative;
+      }
+      .pick-trigger {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        min-height: 36px;
+        padding: 8px 12px 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 0;
+        background: #1c1c20;
+        color: var(--fg);
+        font: inherit;
+        font-size: 12.5px;
+        line-height: 1.35;
+        cursor: pointer;
+        text-align: left;
+        box-shadow: none;
+        transition: background 0.15s ease;
+      }
+      .pick-trigger:hover {
+        background: #222228;
+      }
+      .pick-trigger[aria-expanded="true"] {
+        border-color: #555;
+      }
+      .pick-trigger-label {
+        flex: 1;
+        min-width: 0;
+      }
+      .pick-chevron {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+        color: var(--muted);
+        transition: transform 0.15s ease;
+      }
+      .pick-trigger[aria-expanded="true"] .pick-chevron {
+        transform: rotate(180deg);
+      }
+      .pick-menu {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        z-index: 100;
+        padding: 4px 4px 6px;
+        background: #1c1c20;
+        border: 1px solid var(--border);
+        border-radius: 0;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+      .pick-menu.hidden {
+        display: none;
+      }
+      .pick-item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        min-height: 32px;
+        padding: 7px 12px 7px 10px;
+        border: none;
+        background: transparent;
+        color: var(--fg);
+        font: inherit;
+        font-size: 12.5px;
+        line-height: 1.35;
+        border-radius: 0;
+        cursor: pointer;
+        text-align: left;
+      }
+      .pick-item:hover {
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .pick-item.selected {
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .pick-menu-scroll {
+        max-height: 280px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+      }
+      .pick-menu-scroll::-webkit-scrollbar {
+        width: 5px;
+      }
+      .pick-menu-scroll::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+      }
+      .pick-search {
+        width: 100%;
+        border: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: transparent;
+        color: var(--fg);
+        font: inherit;
+        font-size: 12px;
+        padding: 8px 12px;
+        outline: none;
+      }
+      .pick-search::placeholder {
+        color: var(--muted);
+      }
+      .pick-status {
+        padding: 10px 12px;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+      .pick-status.error {
+        color: #f87171;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="layout">
+      <nav id="sidebar" aria-label="Settings sections">
+        <button type="button" class="nav-btn active" data-panel="general">General</button>
+        <button type="button" class="nav-btn" data-panel="agent">Agent</button>
+      </nav>
+
+      <main id="content">
+        <section id="panel-general" class="panel active" aria-labelledby="general-title">
+          <h1 id="general-title">General</h1>
+          <p class="lead">Appearance, startup, and browser defaults.</p>
+
+          <div class="section">
+            <div class="section-title">Browser</div>
+            <div class="placeholder-note">Appearance, startup, and default search — coming soon.</div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">Privacy</div>
+            <div class="placeholder-note">Tracking, cookies, and private browsing — coming soon.</div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">About</div>
+            <div class="row">
+              <div class="row-label">
+                <strong>Version</strong>
+                <span>Installed SlopBrowser build</span>
+              </div>
+              <div class="row-value" id="versionValue">—</div>
+            </div>
+            <div class="row" id="buildRow" hidden>
+              <div class="row-label">
+                <strong>Build</strong>
+                <span>Internal build identifier</span>
+              </div>
+              <div class="row-value" id="buildValue">—</div>
+            </div>
+          </div>
+        </section>
+
+        <section id="panel-agent" class="panel" aria-labelledby="agent-title" hidden>
+          <h1 id="agent-title">Agent</h1>
+          <p class="lead">Configure SlopAI — choose a provider and connection details.</p>
+
+          <div class="section">
+            <div class="section-title">Provider</div>
+            <div class="field">
+              <label class="field-label" id="agentProviderLabelTitle">AI provider</label>
+              <span class="field-hint">Select which service SlopAI should use for chat.</span>
+              <div class="pick-wrap" id="agentProviderPick">
+                <button
+                  type="button"
+                  class="pick-trigger"
+                  id="agentProviderTrigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  aria-labelledby="agentProviderLabelTitle agentProviderLabel"
+                >
+                  <span class="pick-trigger-label" id="agentProviderLabel">OpenAI</span>
+                  <svg
+                    class="pick-chevron"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+                <div class="pick-menu hidden" id="agentProviderMenu" role="listbox" aria-label="AI provider">
+                  <button type="button" class="pick-item selected" data-value="openai" role="option">OpenAI</button>
+                  <button type="button" class="pick-item" data-value="anthropic" role="option">Anthropic</button>
+                  <button type="button" class="pick-item" data-value="google" role="option">Google Gemini</button>
+                  <button type="button" class="pick-item" data-value="openrouter" role="option">OpenRouter</button>
+                  <button type="button" class="pick-item" data-value="ollama" role="option">Ollama (local)</button>
+                  <button type="button" class="pick-item" data-value="custom" role="option">Custom endpoint</button>
+                </div>
+              </div>
+              <input type="hidden" id="agentProvider" value="openai" />
+            </div>
+            <div class="field" id="apiKeyField">
+              <label class="field-label" for="agentApiKey">API key</label>
+              <span class="field-hint">Stored locally on this device. Not synced.</span>
+              <input
+                id="agentApiKey"
+                class="field-input"
+                type="password"
+                placeholder="sk-…"
+                autocomplete="off"
+              />
+            </div>
+            <div class="field" id="baseUrlField" hidden>
+              <label class="field-label" for="agentBaseUrl">Base URL</label>
+              <span class="field-hint">OpenAI-compatible API endpoint.</span>
+              <input
+                id="agentBaseUrl"
+                class="field-input"
+                type="url"
+                placeholder="http://localhost:11434/v1"
+                autocomplete="off"
+              />
+            </div>
+            <div class="field">
+              <label class="field-label" id="agentModelLabelTitle">Model</label>
+              <span class="field-hint" id="agentModelHint">Loaded from your provider. Select the default model for new chats.</span>
+              <div class="pick-wrap" id="agentModelPick">
+                <button
+                  type="button"
+                  class="pick-trigger"
+                  id="agentModelTrigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  aria-labelledby="agentModelLabelTitle agentModelLabel"
+                >
+                  <span class="pick-trigger-label" id="agentModelLabel">Select a model</span>
+                  <svg
+                    class="pick-chevron"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+                <div class="pick-menu hidden" id="agentModelMenu" role="listbox" aria-label="AI model">
+                  <input
+                    type="search"
+                    id="agentModelSearch"
+                    class="pick-search"
+                    placeholder="Search models…"
+                    autocomplete="off"
+                    hidden
+                  />
+                  <div class="pick-status hidden" id="agentModelStatus"></div>
+                  <div class="pick-menu-scroll" id="agentModelList"></div>
+                </div>
+              </div>
+              <input type="hidden" id="agentModel" value="" />
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script>
+      const SETTINGS_KEY = "slopbrowser-agent-settings";
+      const DEFAULT_AGENT = {
+        provider: "openai",
+        apiKey: "",
+        baseUrl: "",
+        model: "",
+      };
+
+      const PROVIDER_LABELS = {
+        openai: "OpenAI",
+        anthropic: "Anthropic",
+        google: "Google Gemini",
+        openrouter: "OpenRouter",
+        ollama: "Ollama (local)",
+        custom: "Custom endpoint",
+      };
+
+      let agentModels = [];
+      let modelLoadTimer = null;
+      let modelLoadSeq = 0;
+
+      function currentAgentForm() {
+        return {
+          provider: document.getElementById("agentProvider")?.value || DEFAULT_AGENT.provider,
+          apiKey: document.getElementById("agentApiKey")?.value?.trim() || "",
+          baseUrl: document.getElementById("agentBaseUrl")?.value?.trim() || "",
+          model: document.getElementById("agentModel")?.value?.trim() || "",
+        };
+      }
+
+      function setModelMenuOpen(open) {
+        const trigger = document.getElementById("agentModelTrigger");
+        const menu = document.getElementById("agentModelMenu");
+        if (!trigger || !menu) return;
+        const show = !!open;
+        trigger.setAttribute("aria-expanded", show ? "true" : "false");
+        menu.classList.toggle("hidden", !show);
+        if (!show) {
+          const search = document.getElementById("agentModelSearch");
+          if (search) {
+            search.value = "";
+            search.hidden = true;
+          }
+          filterModelList("");
+        }
+      }
+
+      function setModelStatus(text, isError) {
+        const el = document.getElementById("agentModelStatus");
+        if (!el) return;
+        if (!text) {
+          el.textContent = "";
+          el.classList.remove("error");
+          el.classList.add("hidden");
+          return;
+        }
+        el.textContent = text;
+        el.classList.toggle("error", !!isError);
+        el.classList.remove("hidden");
+      }
+
+      function setModelLabel(value) {
+        const label = document.getElementById("agentModelLabel");
+        const hidden = document.getElementById("agentModel");
+        const id = String(value || "").trim();
+        if (hidden) hidden.value = id;
+        if (!label) return;
+        if (!id) {
+          label.textContent = "Select a model";
+          return;
+        }
+        const match = agentModels.find((m) => m.id === id);
+        label.textContent = match?.name || id;
+      }
+
+      function selectModel(id) {
+        setModelLabel(id);
+        document.querySelectorAll("#agentModelList .pick-item").forEach((btn) => {
+          const on = btn.dataset.value === id;
+          btn.classList.toggle("selected", on);
+          btn.setAttribute("aria-selected", on ? "true" : "false");
+        });
+        saveAgentSettings();
+      }
+
+      function filterModelList(query) {
+        const q = String(query || "").trim().toLowerCase();
+        document.querySelectorAll("#agentModelList .pick-item").forEach((btn) => {
+          const hay = `${btn.dataset.value || ""} ${btn.textContent || ""}`.toLowerCase();
+          btn.hidden = !!(q && !hay.includes(q));
+        });
+      }
+
+      function renderModelList(models, selectedId) {
+        const list = document.getElementById("agentModelList");
+        if (!list) return;
+        list.replaceChildren();
+        agentModels = Array.isArray(models) ? models.slice() : [];
+
+        const search = document.getElementById("agentModelSearch");
+        if (search) search.hidden = agentModels.length < 12;
+
+        if (!agentModels.length) {
+          setModelStatus("No models found for this provider.", true);
+          setModelLabel(selectedId || "");
+          return;
+        }
+
+        setModelStatus("");
+
+        const selected = selectedId && agentModels.some((m) => m.id === selectedId) ? selectedId : "";
+        if (!selected && selectedId) {
+          const custom = document.createElement("button");
+          custom.type = "button";
+          custom.className = "pick-item selected";
+          custom.dataset.value = selectedId;
+          custom.setAttribute("role", "option");
+          custom.setAttribute("aria-selected", "true");
+          custom.textContent = selectedId;
+          custom.addEventListener("click", (e) => {
+            e.stopPropagation();
+            selectModel(selectedId);
+            setModelMenuOpen(false);
+          });
+          list.appendChild(custom);
+        }
+
+        for (const model of agentModels) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "pick-item";
+          btn.dataset.value = model.id;
+          btn.setAttribute("role", "option");
+          const on = model.id === (selected || selectedId);
+          if (on) btn.classList.add("selected");
+          btn.setAttribute("aria-selected", on ? "true" : "false");
+          btn.textContent = model.name === model.id ? model.id : `${model.name} (${model.id})`;
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            selectModel(model.id);
+            setModelMenuOpen(false);
+          });
+          list.appendChild(btn);
+        }
+
+        if (!selectedId && agentModels[0] && !document.getElementById("agentModel")?.value) {
+          selectModel(agentModels[0].id);
+        } else {
+          setModelLabel(selectedId || document.getElementById("agentModel")?.value || "");
+        }
+      }
+
+      async function loadAgentModels() {
+        const seq = ++modelLoadSeq;
+        const form = currentAgentForm();
+        const trigger = document.getElementById("agentModelTrigger");
+        const label = document.getElementById("agentModelLabel");
+
+        if (trigger) trigger.disabled = true;
+        if (label) label.textContent = "Loading models…";
+        setModelStatus("Loading models from provider…");
+
+        let res = { ok: false, models: [], error: "Model API unavailable" };
+        if (window.slopApp?.agentSettings?.listModels) {
+          try {
+            res = await window.slopApp.agentSettings.listModels({
+              provider: form.provider,
+              apiKey: form.apiKey,
+              baseUrl: form.baseUrl,
+            });
+          } catch (err) {
+            res = { ok: false, models: [], error: err?.message || "Request failed" };
+          }
+        }
+
+        if (seq !== modelLoadSeq) return;
+        if (trigger) trigger.disabled = false;
+
+        if (!res?.ok) {
+          agentModels = [];
+          renderModelList([], form.model);
+          setModelStatus(res?.error || "Could not load models.", true);
+          setModelLabel(form.model);
+          return;
+        }
+
+        renderModelList(res.models || [], form.model);
+      }
+
+      function scheduleLoadAgentModels() {
+        clearTimeout(modelLoadTimer);
+        modelLoadTimer = setTimeout(loadAgentModels, 450);
+      }
+
+      function initModelPick() {
+        const trigger = document.getElementById("agentModelTrigger");
+        const menu = document.getElementById("agentModelMenu");
+        const wrap = document.getElementById("agentModelPick");
+        const search = document.getElementById("agentModelSearch");
+        if (!trigger || !menu) return;
+
+        trigger.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const open = trigger.getAttribute("aria-expanded") !== "true";
+          setModelMenuOpen(open);
+          if (open && search && !search.hidden) {
+            requestAnimationFrame(() => search.focus());
+          }
+        });
+
+        search?.addEventListener("input", () => filterModelList(search.value));
+        search?.addEventListener("click", (e) => e.stopPropagation());
+
+        document.addEventListener("click", (e) => {
+          if (!wrap?.contains(e.target)) setModelMenuOpen(false);
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") setModelMenuOpen(false);
+        });
+      }
+
+      function setProviderValue(value) {
+        const v = PROVIDER_LABELS[value] ? value : DEFAULT_AGENT.provider;
+        const hidden = document.getElementById("agentProvider");
+        const label = document.getElementById("agentProviderLabel");
+        if (hidden) hidden.value = v;
+        if (label) label.textContent = PROVIDER_LABELS[v];
+        document.querySelectorAll(".pick-item").forEach((btn) => {
+          const on = btn.dataset.value === v;
+          btn.classList.toggle("selected", on);
+          btn.setAttribute("aria-selected", on ? "true" : "false");
+        });
+        updateAgentFields();
+        saveAgentSettings();
+        scheduleLoadAgentModels();
+      }
+
+      function setProviderMenuOpen(open) {
+        const trigger = document.getElementById("agentProviderTrigger");
+        const menu = document.getElementById("agentProviderMenu");
+        if (!trigger || !menu) return;
+        const show = !!open;
+        trigger.setAttribute("aria-expanded", show ? "true" : "false");
+        menu.classList.toggle("hidden", !show);
+      }
+
+      function initProviderPick() {
+        const trigger = document.getElementById("agentProviderTrigger");
+        const menu = document.getElementById("agentProviderMenu");
+        const wrap = document.getElementById("agentProviderPick");
+        if (!trigger || !menu) return;
+
+        trigger.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const open = trigger.getAttribute("aria-expanded") !== "true";
+          setProviderMenuOpen(open);
+        });
+
+        menu.querySelectorAll(".pick-item").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            setProviderValue(btn.dataset.value);
+            setProviderMenuOpen(false);
+          });
+        });
+
+        document.addEventListener("click", (e) => {
+          if (!wrap?.contains(e.target)) setProviderMenuOpen(false);
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") setProviderMenuOpen(false);
+        });
+      }
+
+      function loadAgentSettingsLocal() {
+        try {
+          const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+          return { ...DEFAULT_AGENT, ...(raw && typeof raw === "object" ? raw : {}) };
+        } catch (_) {
+          return { ...DEFAULT_AGENT };
+        }
+      }
+
+      async function loadAgentSettings() {
+        if (window.slopApp?.agentSettings?.get) {
+          try {
+            return await window.slopApp.agentSettings.get();
+          } catch (_) {}
+        }
+        return loadAgentSettingsLocal();
+      }
+
+      async function saveAgentSettings() {
+        const provider = document.getElementById("agentProvider")?.value || DEFAULT_AGENT.provider;
+        const data = {
+          provider,
+          apiKey: document.getElementById("agentApiKey")?.value?.trim() || "",
+          baseUrl: document.getElementById("agentBaseUrl")?.value?.trim() || "",
+          model: document.getElementById("agentModel")?.value?.trim() || "",
+        };
+        if (window.slopApp?.agentSettings?.set) {
+          try {
+            await window.slopApp.agentSettings.set(data);
+          } catch (_) {}
+        } else {
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
+        }
+        return data;
+      }
+
+      function applyAgentSettings(data) {
+        const apiKeyEl = document.getElementById("agentApiKey");
+        const baseUrlEl = document.getElementById("agentBaseUrl");
+        const modelEl = document.getElementById("agentModel");
+        setProviderValue(data.provider || DEFAULT_AGENT.provider);
+        if (apiKeyEl) apiKeyEl.value = data.apiKey || "";
+        if (baseUrlEl) baseUrlEl.value = data.baseUrl || "";
+        if (modelEl) modelEl.value = data.model || "";
+        setModelLabel(data.model || "");
+        updateAgentFields();
+        loadAgentModels();
+      }
+
+      function updateAgentFields() {
+        const provider = document.getElementById("agentProvider")?.value || "openai";
+        const apiKeyField = document.getElementById("apiKeyField");
+        const baseUrlField = document.getElementById("baseUrlField");
+        const hint = document.getElementById("agentModelHint");
+        const isLocal = provider === "ollama";
+        const isCustom = provider === "custom";
+        if (apiKeyField) apiKeyField.hidden = isLocal;
+        if (baseUrlField) baseUrlField.hidden = !(isLocal || isCustom);
+        if (hint) {
+          hint.textContent = isLocal
+            ? "Loaded from your local Ollama instance."
+            : isCustom
+              ? "Loaded from your custom OpenAI-compatible endpoint."
+              : "Loaded from your provider. Select the default model for new chats.";
+        }
+      }
+
+      function setActivePanel(id) {
+        document.querySelectorAll(".nav-btn").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.panel === id);
+        });
+        document.querySelectorAll(".panel").forEach((panel) => {
+          const active = panel.id === "panel-" + id;
+          panel.classList.toggle("active", active);
+          panel.hidden = !active;
+        });
+      }
+
+      document.querySelectorAll(".nav-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          setActivePanel(btn.dataset.panel);
+          if (btn.dataset.panel === "agent") loadAgentModels();
+        });
+      });
+
+      ["agentApiKey", "agentBaseUrl"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("input", () => {
+          saveAgentSettings();
+          scheduleLoadAgentModels();
+        });
+      });
+
+      initProviderPick();
+      initModelPick();
+
+      (async function initAgentSettings() {
+        let data = await loadAgentSettings();
+        const local = loadAgentSettingsLocal();
+        const needsMigrate =
+          window.slopApp?.agentSettings?.set &&
+          !data.apiKey &&
+          !data.baseUrl &&
+          !data.model &&
+          (local.apiKey || local.baseUrl || local.model);
+        if (needsMigrate) {
+          data = { ...data, ...local };
+          await window.slopApp.agentSettings.set(data);
+          localStorage.removeItem(SETTINGS_KEY);
+        }
+        applyAgentSettings(data);
+      })();
+
+      window.renderSlopSettings = function (data) {
+        const info = data || {};
+        const versionEl = document.getElementById("versionValue");
+        const buildRow = document.getElementById("buildRow");
+        const buildValue = document.getElementById("buildValue");
+        if (versionEl) versionEl.textContent = info.version || "—";
+        if (info.buildId && buildRow && buildValue) {
+          buildRow.hidden = false;
+          buildValue.textContent = info.buildId;
+        }
+      };
+    </script>
+  </body>
+</html>

@@ -154,11 +154,22 @@
             <div id="downloadPanelList" class="download-panel-list"></div>
           </div>
         </div>
-        <div id="menuWrap">
-          <button id="menuBtn" class="nav-btn" title="Menu" aria-haspopup="true">
-            <i data-lucide="menu"></i>
+        <div id="menuCluster" class="menu-cluster">
+          <button
+            type="button"
+            id="slopAiCloseChat"
+            class="slopai-close-chat"
+            title="Close chat"
+            aria-hidden="true"
+          >
+            <i data-lucide="x"></i>
+            <span>Close chat</span>
           </button>
-          <div id="menu" class="hidden" role="menu">
+          <div id="menuWrap">
+            <button id="menuBtn" class="nav-btn" title="Menu" aria-haspopup="true">
+              <i data-lucide="menu"></i>
+            </button>
+            <div id="menu" class="hidden" role="menu">
             <button class="menu-item" data-action="newtab" role="menuitem">
               <i data-lucide="plus"></i><span>New tab</span><kbd>Ctrl+T</kbd>
             </button>
@@ -258,6 +269,32 @@
               </div>
             </div>
             <div class="menu-sep"></div>
+            <div class="menu-sub-wrap" id="slopAiSubWrap">
+              <button
+                type="button"
+                class="menu-item menu-sub"
+                data-action="slopai"
+                role="menuitem"
+                aria-haspopup="true"
+              >
+                <i data-lucide="sparkles"></i><span>SlopAI</span>
+                <i data-lucide="chevron-left" class="menu-chevron"></i>
+              </button>
+              <div id="slopAiSubmenu" class="menu-submenu" role="menu">
+                <button
+                  type="button"
+                  class="menu-item"
+                  data-action="slopai-open-chat"
+                  role="menuitem"
+                >
+                  <i data-lucide="message-square"></i><span>Open chat</span>
+                </button>
+                <div class="menu-sep"></div>
+                <div class="menu-submenu-label">Recent chats</div>
+                <div id="slopAiRecentList" class="menu-submenu-list"></div>
+              </div>
+            </div>
+            <div class="menu-sep"></div>
             <button class="menu-item" data-action="reload" role="menuitem">
               <i data-lucide="rotate-cw"></i><span>Reload</span><kbd>Ctrl+R</kbd>
             </button>
@@ -271,7 +308,12 @@
             <button class="menu-item" data-action="devtools" role="menuitem">
               <i data-lucide="code"></i><span>DevTools</span>
             </button>
+            <div class="menu-sep"></div>
+            <button class="menu-item" data-action="settings" role="menuitem">
+              <i data-lucide="settings"></i><span>Settings</span>
+            </button>
           </div>
+        </div>
         </div>
       </div>
     </div>
@@ -301,10 +343,61 @@
           <div id="zoomIndicator" aria-live="polite" aria-hidden="true">100%</div>
           <div id="views"></div>
         </div>
+
+        <aside id="slopAiPanel" class="hidden" aria-label="SlopAI">
+          <div id="slopAiResize" class="slopai-panel-resize" title="Resize panel"></div>
+          <div id="slopAiBody" class="slopai-panel-body"></div>
+          <div id="slopAiContextWrap" class="slopai-context-wrap hidden" title="AI has context from this page">
+            <span id="slopAiContextIcon" class="slopai-context-icon"></span>
+            <span id="slopAiContextLabel" class="slopai-context-label">Viewing this page</span>
+          </div>
+          <div id="slopAiSummarizeWrap" class="slopai-summarize-wrap hidden">
+            <button
+              type="button"
+              id="slopAiSummarize"
+              class="slopai-summarize-btn"
+              title="Summarize this page"
+            >
+              <span id="slopAiSummarizeIcon" class="slopai-summarize-icon"></span>
+              <span class="slopai-summarize-label">Summarize content</span>
+            </button>
+          </div>
+          <form id="slopAiComposer" class="slopai-composer" autocomplete="off">
+            <textarea
+              id="slopAiInput"
+              class="slopai-composer-input"
+              rows="1"
+              placeholder="Ask anything…"
+              aria-label="Message SlopAI"
+            ></textarea>
+            <div class="slopai-composer-toolbar">
+              <button
+                type="button"
+                id="slopAiAppend"
+                class="slopai-composer-append"
+                title="Append"
+                aria-label="Append"
+              >
+                <i data-lucide="paperclip"></i>
+              </button>
+              <button
+                type="submit"
+                id="slopAiSend"
+                class="slopai-composer-send"
+                title="Send"
+                aria-label="Send message"
+                disabled
+              >
+                <i data-lucide="arrow-up"></i>
+              </button>
+            </div>
+          </form>
+        </aside>
       </div>
     </div>
 
     <div id="sidePanelResizeShield" class="side-panel-resize-shield hidden" aria-hidden="true"></div>
+    <div id="slopAiResizeShield" class="slopai-panel-resize-shield hidden" aria-hidden="true"></div>
 
     <div id="cookieOverlay" class="hidden" aria-hidden="true">
       <div id="cookiePanel" role="dialog" aria-labelledby="cookieTitle">
