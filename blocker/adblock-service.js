@@ -103,7 +103,9 @@ class AdblockService {
     this.totalBlocked = 0;
     /** WeakSet so destroyed sessions (private tabs) can be GC'd. */
     this.hookedSessions = new WeakSet();
-    this.cacheDir = "";
+    /** @type {Map<number, string>} webContents id -> insertCSS key */
+    this.cosmeticCssKeys = new Map();
+    this.earlyPreloadPath = path.join(__dirname, "preload-adblock-early.js");
     this.configPath = "";
     this.enginePath = "";
     this.locale = "en";
@@ -223,6 +225,10 @@ class AdblockService {
     }
   }
 
+  clearCosmeticsForContents(webContentsId) {
+    if (webContentsId != null) this.cosmeticCssKeys.delete(webContentsId);
+  }
+
   async injectCosmetics(contents, url) {
     if (!contents || contents.isDestroyed?.()) return;
     if (!this.enabled || !this.ready || !url || !/^https?:/i.test(url)) return;
@@ -230,21 +236,31 @@ class AdblockService {
     const partition = partitionFromSession(contents.session);
     if (isIntegrationPartition(partition)) return;
 
-    const res = this.getCosmetics(url);
-
-    if (res.injected_script) {
-      const wrapped = `(function(){if(window.__slopCosmeticsBoot)return;window.__slopCosmeticsBoot=true;\n${res.injected_script}\n})();`;
+    const wcId = contents.id;
+    const prevKey = this.cosmeticCssKeys.get(wcId);
+    if (prevKey) {
       try {
-        await contents.executeJavaScript(wrapped, true);
+        await contents.removeInsertedCSS(prevKey);
       } catch (_) {}
+      this.cosmeticCssKeys.delete(wcId);
     }
+
+    const res = this.getCosmetics(url);
 
     if (res.hide_selectors?.length) {
       const css = res.hide_selectors
         .map((sel) => `${sel}{display:none!important;}`)
         .join("\n");
       try {
-        await contents.insertCSS(css);
+        const key = await contents.insertCSS(css);
+        if (key) this.cosmeticCssKeys.set(wcId, key);
+      } catch (_) {}
+    }
+
+    if (res.injected_script) {
+      const wrapped = `(function(){if(window.__slopScriptletsMain)return;window.__slopScriptletsMain=true;\n${res.injected_script}\n})();`;
+      try {
+        await contents.executeJavaScript(wrapped, true);
       } catch (_) {}
     }
   }
@@ -484,9 +500,11 @@ class AdblockService {
     this.totalBlocked++;
     try {
       const { webContents } = require("electron");
+      const { getChromeForGuestWebContents } = require("../main/tab-manager");
       const guest = webContents.fromId(webContentsId);
       if (!guest || guest.isDestroyed()) return;
-      const host = guest.hostWebContents;
+      const tabChrome = getChromeForGuestWebContents(webContentsId);
+      const host = tabChrome || guest.hostWebContents;
       if (host && !host.isDestroyed()) {
         host.send("slop:adBlocked", {
           webContentsId,
@@ -502,6 +520,22 @@ class AdblockService {
     if (isIntegrationPartition(partition)) return;
 
     this.hookedSessions.add(sess);
+
+    try {
+      if (
+        typeof sess.registerPreloadScript === "function" &&
+        fs.existsSync(this.earlyPreloadPath)
+      ) {
+        sess.registerPreloadScript({
+          type: "frame",
+          id: "slopbrowser-adblock-early",
+          file: this.earlyPreloadPath,
+        });
+      }
+    } catch (err) {
+      console.warn("Early adblock preload unavailable:", err.message);
+    }
+
     sess.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, cb) => {
       const verdict = this.evaluateRequest(details);
       if (verdict.action === "block") {

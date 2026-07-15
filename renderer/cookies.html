@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Cookies</title>
+    <style>
+      :root {
+        --fg: #ffffff;
+        --muted: #8b90a3;
+        --accent: #6c8cff;
+        --border: #333;
+        --bg: #0e0f13;
+        --surface: rgba(18, 18, 18, 0.88);
+        --row-hover: rgba(255, 255, 255, 0.06);
+        --danger: #ff6b6b;
+        --ok: #37d67a;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: "Inter", "Segoe UI", -apple-system, system-ui, sans-serif;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+      }
+      *::-webkit-scrollbar {
+        width: 5px;
+        height: 5px;
+      }
+      *::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      *::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+      }
+      *::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.22);
+      }
+      #page {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 28px 20px 48px;
+      }
+      #searchForm {
+        margin-bottom: 12px;
+      }
+      .search-box {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 4px 18px;
+        backdrop-filter: blur(8px);
+      }
+      .search-box:focus-within {
+        border-color: #555;
+      }
+      .search-box .glass {
+        color: var(--muted);
+        width: 18px;
+        height: 18px;
+        flex: 0 0 auto;
+      }
+      #q {
+        flex: 1;
+        min-width: 0;
+        border: none;
+        background: transparent;
+        color: var(--fg);
+        font: inherit;
+        font-size: 14px;
+        padding: 10px 0;
+        outline: none;
+      }
+      #q::placeholder {
+        color: var(--muted);
+      }
+      .ck-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        min-height: 36px;
+        margin-bottom: 14px;
+      }
+      .ck-scope {
+        margin: 0;
+        font-size: 12.5px;
+        line-height: 1.4;
+        color: var(--muted);
+        min-width: 0;
+        flex: 1;
+      }
+      .ck-toolbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .ck-filter {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13px;
+        color: var(--fg);
+        cursor: pointer;
+        user-select: none;
+      }
+      .ck-filter input {
+        margin: 0;
+        accent-color: var(--accent);
+      }
+      .ck-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 34px;
+        padding: 0 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--fg);
+        font: inherit;
+        font-size: 13px;
+        line-height: 1.35;
+        cursor: pointer;
+        transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+      }
+      .ck-btn:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .ck-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .ck-btn.danger:hover:not(:disabled) {
+        background: rgba(255, 107, 107, 0.12);
+        border-color: rgba(255, 107, 107, 0.45);
+        color: #ffb4b4;
+      }
+      #list {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+      .ck-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 4px 12px;
+        padding: 14px 4px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .ck-row:hover {
+        background: var(--row-hover);
+      }
+      .ck-row-name {
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--fg);
+        word-break: break-all;
+      }
+      .ck-row-del {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        padding: 2px 0;
+        justify-self: end;
+        align-self: start;
+      }
+      .ck-row-del:hover {
+        color: var(--danger);
+      }
+      .ck-row-domain,
+      .ck-row-value,
+      .ck-row-meta {
+        grid-column: 1 / -1;
+        font-size: 12px;
+        line-height: 1.4;
+        color: var(--muted);
+        word-break: break-all;
+      }
+      .ck-row-value {
+        color: #b8bcd0;
+      }
+      .empty {
+        padding: 40px 12px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .empty[hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="page">
+      <form id="searchForm" autocomplete="off">
+        <div class="search-box">
+          <svg
+            class="glass"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+          <input id="q" type="search" placeholder="Search cookies" spellcheck="false" />
+        </div>
+      </form>
+
+      <div class="ck-toolbar">
+        <p id="scope" class="ck-scope">Loading…</p>
+        <div class="ck-toolbar-actions">
+          <label class="ck-filter" id="siteOnlyLabel">
+            <input type="checkbox" id="siteOnly" checked />
+            <span>Only this site</span>
+          </label>
+          <button id="clearSite" class="ck-btn" type="button" disabled>Clear site</button>
+          <button id="clearAll" class="ck-btn danger" type="button">Clear all</button>
+        </div>
+      </div>
+
+      <div id="list"></div>
+      <p id="empty" class="empty" hidden>No cookies found.</p>
+    </div>
+
+    <script>
+      (function () {
+        let context = {
+          partition: "persist:slopbrowser",
+          private: false,
+          siteUrl: null,
+        };
+        let allCookies = [];
+        let query = "";
+
+        const els = {
+          list: document.getElementById("list"),
+          empty: document.getElementById("empty"),
+          scope: document.getElementById("scope"),
+          siteOnly: document.getElementById("siteOnly"),
+          siteOnlyLabel: document.getElementById("siteOnlyLabel"),
+          clearSite: document.getElementById("clearSite"),
+          clearAll: document.getElementById("clearAll"),
+          q: document.getElementById("q"),
+          searchForm: document.getElementById("searchForm"),
+        };
+
+        function cookiesApi() {
+          return window.slopApp?.cookies || null;
+        }
+
+        function escapeHTML(s) {
+          return String(s ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+
+        function truncate(s, max) {
+          const t = String(s ?? "");
+          const n = max || 80;
+          return t.length <= n ? t : t.slice(0, n) + "…";
+        }
+
+        function formatExpiry(expirationDate) {
+          if (!expirationDate) return "Session";
+          const d = new Date(expirationDate * 1000);
+          return Number.isNaN(d.getTime()) ? "Session" : d.toLocaleString();
+        }
+
+        function siteHostname() {
+          if (!context.siteUrl) return null;
+          try {
+            return new URL(context.siteUrl).hostname;
+          } catch (_) {
+            return null;
+          }
+        }
+
+        function updateScope() {
+          const host = siteHostname();
+          const siteOnly = els.siteOnly.checked && !!host;
+          const parts = [
+            context.private ? "Private tab" : "Shared profile",
+            siteOnly ? host : "all sites",
+          ];
+          els.scope.textContent = parts.join(" · ");
+          els.clearSite.disabled = !host;
+          els.siteOnly.disabled = !host;
+          els.siteOnlyLabel.style.opacity = host ? "1" : "0.45";
+        }
+
+        function matchesQuery(cookie, q) {
+          if (!q) return true;
+          const hay = [
+            cookie.name,
+            cookie.domain,
+            cookie.path,
+            cookie.value,
+          ]
+            .join(" ")
+            .toLowerCase();
+          return hay.includes(q);
+        }
+
+        function filteredCookies() {
+          const q = query.trim().toLowerCase();
+          return allCookies.filter((c) => matchesQuery(c, q));
+        }
+
+        function render() {
+          const list = filteredCookies();
+          els.list.replaceChildren();
+          els.empty.hidden = list.length > 0;
+
+          for (let i = 0; i < list.length; i++) {
+            const c = list[i];
+            const row = document.createElement("div");
+            row.className = "ck-row";
+            row.dataset.idx = String(i);
+
+            const name = document.createElement("div");
+            name.className = "ck-row-name";
+            name.textContent = c.name || "(unnamed)";
+
+            const del = document.createElement("button");
+            del.type = "button";
+            del.className = "ck-row-del";
+            del.dataset.del = "1";
+            del.textContent = "Delete";
+
+            const domain = document.createElement("div");
+            domain.className = "ck-row-domain";
+            domain.textContent = (c.domain || "") + (c.path || "/");
+
+            const value = document.createElement("div");
+            value.className = "ck-row-value";
+            value.textContent = truncate(c.value, 120);
+
+            const meta = document.createElement("div");
+            meta.className = "ck-row-meta";
+            meta.textContent =
+              (c.httpOnly ? "HttpOnly · " : "") +
+              (c.secure ? "Secure · " : "") +
+              formatExpiry(c.expirationDate);
+
+            row.appendChild(name);
+            row.appendChild(del);
+            row.appendChild(domain);
+            row.appendChild(value);
+            row.appendChild(meta);
+            els.list.appendChild(row);
+          }
+
+          // Keep full list for delete-by-index against filtered view
+          els.list.dataset.cookies = JSON.stringify(list);
+        }
+
+        async function refresh() {
+          const api = cookiesApi();
+          updateScope();
+          if (!api) {
+            allCookies = [];
+            render();
+            return;
+          }
+
+          const host = siteHostname();
+          const siteOnly = els.siteOnly.checked && !!host;
+          let list = [];
+          try {
+            if (siteOnly && context.siteUrl) {
+              list = (await api.getForUrl(context.partition, context.siteUrl)) || [];
+            } else {
+              list = (await api.getAll(context.partition)) || [];
+            }
+          } catch (_) {
+            list = [];
+          }
+
+          list.sort(
+            (a, b) =>
+              (a.domain || "").localeCompare(b.domain || "") ||
+              (a.name || "").localeCompare(b.name || "")
+          );
+          allCookies = list;
+          render();
+        }
+
+        els.list.addEventListener("click", async (e) => {
+          const btn = e.target.closest("[data-del]");
+          if (!btn) return;
+          const row = btn.closest(".ck-row");
+          const api = cookiesApi();
+          if (!row || !api) return;
+          let list = [];
+          try {
+            list = JSON.parse(els.list.dataset.cookies || "[]");
+          } catch (_) {}
+          const cookie = list[Number(row.dataset.idx)];
+          if (!cookie) return;
+          await api.remove(context.partition, cookie).catch(() => {});
+          await refresh();
+        });
+
+        els.clearSite.addEventListener("click", async () => {
+          const api = cookiesApi();
+          if (!api || !context.siteUrl) return;
+          await api.clear(context.partition, context.siteUrl).catch(() => {});
+          await refresh();
+        });
+
+        els.clearAll.addEventListener("click", async () => {
+          const api = cookiesApi();
+          if (!api) return;
+          await api.clear(context.partition).catch(() => {});
+          await refresh();
+        });
+
+        els.siteOnly.addEventListener("change", () => refresh());
+        els.searchForm.addEventListener("submit", (e) => e.preventDefault());
+        els.q.addEventListener("input", () => {
+          query = els.q.value || "";
+          render();
+        });
+
+        window.renderSlopCookies = function (data) {
+          context = {
+            partition: data?.partition || "persist:slopbrowser",
+            private: !!data?.private,
+            siteUrl: data?.siteUrl || null,
+          };
+          if (!context.siteUrl) {
+            els.siteOnly.checked = false;
+          } else {
+            els.siteOnly.checked = true;
+          }
+          refresh();
+        };
+
+        // Fallback if chrome inject is late
+        if (window.slopApp?.cookies) {
+          refresh();
+        }
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; script-src 'self';"
+    />
+    <title>Slop filter</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="slop-panel-overlay.css" />
+  </head>
+  <body class="slop-panel-overlay-root">
+    <div id="slopPanelBackdrop" aria-hidden="true"></div>
+    <div id="slopPanel" role="menu">
+      <div class="slop-head">
+        <span id="slopStatusDot"></span>
+        <span id="slopStatusText">Protection active</span>
+      </div>
+      <div class="filter-stats-section">
+        <span class="filter-stats-title">AI filter</span>
+        <div class="filter-stats">
+          <div class="filter-stat">
+            <span class="filter-num" id="slopPageCount">0</span>
+            <span class="filter-lbl">On this page</span>
+          </div>
+          <div class="filter-stat">
+            <span class="filter-num" id="slopTotalCount">0</span>
+            <span class="filter-lbl">This session</span>
+          </div>
+        </div>
+      </div>
+      <div class="filter-stats-section">
+        <span class="filter-stats-title">Ad blocker</span>
+        <div class="filter-stats">
+          <div class="filter-stat">
+            <span class="filter-num" id="adPageCount">0</span>
+            <span class="filter-lbl">On this page</span>
+          </div>
+          <div class="filter-stat">
+            <span class="filter-num" id="adTotalCount">0</span>
+            <span class="filter-lbl">This session</span>
+          </div>
+        </div>
+      </div>
+      <div class="menu-sep"></div>
+      <button type="button" class="menu-item" id="slopToggle" role="menuitem">
+        <i data-lucide="shield-check"></i><span>AI filter</span>
+        <span id="slopSwitchState" class="menu-state">ON</span>
+      </button>
+      <button type="button" class="menu-item" id="adBlockToggle" role="menuitem">
+        <i data-lucide="ban"></i><span>Ad blocker</span>
+        <span id="adBlockSwitchState" class="menu-state">ON</span>
+      </button>
+    </div>
+    <script src="lib/lucide.js"></script>
+    <script src="slop-panel-overlay.js"></script>
+  </body>
+</html>

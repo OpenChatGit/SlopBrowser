@@ -6,12 +6,14 @@ import {
   HOME,
   HISTORY,
   DOWNLOADS,
+  COOKIES,
   SETTINGS,
   PARTITION,
   HOME_ADDRESS_PLACEHOLDER,
   DEFAULT_ADDRESS_PLACEHOLDER,
   HISTORY_DISPLAY,
   DOWNLOADS_DISPLAY,
+  COOKIES_DISPLAY,
   SETTINGS_DISPLAY,
   LOGO_SVG,
   GLOBE_SVG,
@@ -24,7 +26,6 @@ import {
   BROWSE_HISTORY_MAX,
   BOOKMARKS_MENU_MAX,
   DOWNLOADS_MENU_MAX,
-  SLOPAI_CHATS_MENU_MAX,
   DOWNLOAD_RING_R,
   DOWNLOAD_RING_C,
   SIDE_RAIL_ITEMS,
@@ -36,8 +37,6 @@ import {
   filterUI,
   tabAdCounts,
   tabEls,
-  sidePanelWebviews,
-  sideWebviewLayout,
   bookmarkUrls,
   sessionHistory,
   closedTabs,
@@ -47,6 +46,7 @@ import {
   isHome,
   isHistoryPage,
   isDownloadsPage,
+  isCookiesPage,
   isSettingsPage,
   displayURL,
   pickFavicon,
@@ -62,10 +62,6 @@ import {
   toURL,
 } from "../js/utils.js";
 
-import { renderMarkdown, enhanceMarkdown } from "../js/markdown.js";
-
-import { PAGE_CONTEXT_EXTRACTOR, buildSlopAiApiMessages } from "../js/page-context.js";
-
 import { api } from "../js/registry.js";
 
 let tabs = [];
@@ -75,7 +71,7 @@ let privateTabSeq = 0;
 let browseHistory = [];
 let savedBookmarks = [];
 let activeSidePanelId = null;
-let sideFitTimer = null;
+let boundsRaf = null;
 let zoomHideTimer = null;
 
 
@@ -89,8 +85,27 @@ function syncAddressBar(url) {
   }
 }
 
+function focusHomeSearch(tab, delayMs = 0) {
+  if (!tab || !isHome(tab.url)) return;
+  const run = () => {
+    window.slopAPI.tabs.focus(tab.id).catch(() => {});
+    window.slopAPI.tabs
+      .executeJavaScript(
+        tab.id,
+        "window.__slopFocusHomeSearch&&window.__slopFocusHomeSearch()"
+      )
+      .catch(() => {});
+  };
+  if (delayMs > 0) setTimeout(run, delayMs);
+  else queueMicrotask(run);
+}
+
+function focusActiveHomeSearch(delayMs = 0) {
+  focusHomeSearch(activeTab(), delayMs);
+}
+
 function canBookmark(url) {
-  if (!url || isHome(url) || isHistoryPage(url) || isDownloadsPage(url) || isSettingsPage(url))
+  if (!url || isHome(url) || isHistoryPage(url) || isDownloadsPage(url) || isCookiesPage(url) || isSettingsPage(url))
     return false;
   try {
     const u = new URL(url);
@@ -98,26 +113,6 @@ function canBookmark(url) {
   } catch (_) {
     return false;
   }
-}
-
-function isGoogleSearchPage(url) {
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace(/^www\./i, "").toLowerCase();
-    const isGoogleHost =
-      host === "google.com" ||
-      host.endsWith(".google.com") ||
-      /^google\.[a-z.]{2,10}$/.test(host);
-    if (!isGoogleHost) return false;
-    const path = u.pathname.replace(/\/+$/, "") || "/";
-    return path === "/search" || path === "/" || path === "/webhp";
-  } catch (_) {
-    return false;
-  }
-}
-
-function canSummarizePage(url) {
-  return canBookmark(url) && !isGoogleSearchPage(url);
 }
 
 function syncBookmarkButton(url) {
@@ -238,9 +233,7 @@ function showZoomIndicator(factor) {
 function applyTabZoom(tab, factor, showIndicator = true) {
   factor = clampZoom(factor);
   tab.zoom = factor;
-  try {
-    tab.webview.setZoomFactor(factor);
-  } catch (_) {}
+  window.slopAPI.tabs.setZoom(tab.id, factor).catch(() => {});
   if (showIndicator && tab.id === activeId) showZoomIndicator(factor);
 }
 
@@ -248,6 +241,62 @@ function tabByWebContentsId(id) {
   if (!id) return null;
   return tabs.find((t) => t.webContentsId === id) || null;
 }
+
+/* ---------- Tab content bounds (WebContentsView) ---------- */
+
+function syncTabBounds() {
+  if (!els.views) return;
+  const r = els.views.getBoundingClientRect();
+  if (r.width < 1 || r.height < 1) return;
+  window.slopAPI.tabs
+    .setBounds({
+      x: Math.round(r.left),
+      y: Math.round(r.top),
+      width: Math.round(r.width),
+      height: Math.round(r.height),
+    })
+    .catch(() => {});
+}
+
+function syncSidePanelBounds() {
+  if (!els.sidePanelViews || els.sidePanel.classList.contains("hidden")) {
+    window.slopAPI.sidePanel.setBounds(null).catch(() => {});
+    return;
+  }
+  const r = els.sidePanelViews.getBoundingClientRect();
+  if (r.width < 1 || r.height < 1) return;
+  window.slopAPI.sidePanel
+    .setBounds({
+      x: Math.round(r.left),
+      y: Math.round(r.top),
+      width: Math.round(r.width),
+      height: Math.round(r.height),
+    })
+    .catch(() => {});
+}
+
+function scheduleContentBoundsSync() {
+  if (boundsRaf != null) return;
+  boundsRaf = requestAnimationFrame(() => {
+    boundsRaf = null;
+    syncTabBounds();
+    syncSidePanelBounds();
+  });
+}
+
+function initTabBoundsSync() {
+  if (!els.views) return;
+  scheduleContentBoundsSync();
+  if (typeof ResizeObserver !== "undefined") {
+    const boundsObserver = new ResizeObserver(() => scheduleContentBoundsSync());
+    boundsObserver.observe(els.views);
+    if (els.viewsFrame) boundsObserver.observe(els.viewsFrame);
+    if (els.sidePanelViews) boundsObserver.observe(els.sidePanelViews);
+  }
+  window.addEventListener("resize", scheduleContentBoundsSync);
+}
+
+initTabBoundsSync();
 
 /* ---------- Favicons ---------- */
 // Prefer a real .ico/.png/.svg favicon over apple-touch icons; take the first.
@@ -262,42 +311,47 @@ function activeTab() {
   return getTab(activeId);
 }
 
-function createTab(url, opts = {}) {
+async function createTab(url, opts = {}) {
   const id = idSeq++;
   const isPrivate = !!opts.private;
-  // Non-persist partition = in-memory session, cleared when the tab closes.
   const partition = isPrivate
     ? "slopbrowser-tab-private-" + ++privateTabSeq
     : PARTITION;
 
-  const webview = document.createElement("webview");
-  webview.setAttribute("allowpopups", "");
-  webview.setAttribute("partition", partition);
-  webview.setAttribute("preload", window.slopAPI.preloadWebviewPath);
-  webview.setAttribute(
-    "webpreferences",
-    "contextIsolation=yes,javascript=yes,sandbox=no"
-  );
-  webview.dataset.id = String(id);
-  if (isPrivate) webview.dataset.private = "1";
-  webview.src = url || HOME;
-  els.views.appendChild(webview);
-
   const startURL = url || HOME;
   const tab = {
     id,
-    webview,
-    title: isHome(startURL) ? "Home" : "New tab",
+    title: isHome(startURL)
+      ? "Home"
+      : isHistoryPage(startURL)
+        ? "History"
+        : isDownloadsPage(startURL)
+          ? "Downloads"
+          : isCookiesPage(startURL)
+            ? "Cookies"
+            : isSettingsPage(startURL)
+              ? "Settings"
+              : "New tab",
     url: startURL,
     favicon: null,
     private: isPrivate,
     partition,
     zoom: ZOOM_DEFAULT,
+    webContentsId: null,
   };
   tabs.push(tab);
-
-  wireWebview(tab);
   renderTabs();
+
+  try {
+    const result = await window.slopAPI.tabs.create({
+      tabId: id,
+      url: startURL,
+      partition,
+      zoom: tab.zoom,
+    });
+    if (result?.webContentsId) tab.webContentsId = result.webContentsId;
+  } catch (_) {}
+
   setActive(id);
   return tab;
 }
@@ -341,11 +395,11 @@ function closeTab(id) {
   const idx = tabs.findIndex((t) => t.id === id);
   if (idx === -1) return;
   const [tab] = tabs.splice(idx, 1);
-  if (!isHome(tab.url) && !isHistoryPage(tab.url) && !isDownloadsPage(tab.url) && !isSettingsPage(tab.url)) {
+  if (!isHome(tab.url) && !isHistoryPage(tab.url) && !isDownloadsPage(tab.url) && !isCookiesPage(tab.url) && !isSettingsPage(tab.url)) {
     closedTabs.unshift(historyEntryFromTab(tab));
     if (closedTabs.length > 25) closedTabs.pop();
   }
-  tab.webview.remove();
+  window.slopAPI.tabs.close(id).catch(() => {});
   // Private tabs use in-memory partitions — wipe all site data on close.
   if (tab.private) {
     window.slopAPI.cookies.clearPartition(tab.partition).catch(() => {});
@@ -359,24 +413,23 @@ function closeTab(id) {
   renderTabs();
 }
 
-function setActive(id) {
+function setActive(id, opts = {}) {
   activeId = id;
-  tabs.forEach((t) => {
-    t.webview.classList.toggle("active", t.id === id);
-  });
+  if (!opts.fromMain) {
+    window.slopAPI.tabs.setActive(id).catch(() => {});
+  }
   const t = activeTab();
   if (t) {
     syncAddressBar(t.url);
     syncBookmarkButton(t.url);
     updateNavButtons();
-    try {
-      t.webview.setZoomFactor(t.zoom ?? ZOOM_DEFAULT);
-    } catch (_) {}
+    applyTabZoom(t, t.zoom ?? ZOOM_DEFAULT, false);
   }
   updatePrivateChrome();
   renderSideRail();
   refreshFilterPanelCounts();
-  updateSlopAiSummarizeButton();
+  if (slopPanelOverlayOpen) refreshSlopPanelOverlay();
+  if (t && isHome(t.url)) focusHomeSearch(t);
 }
 
 /*
@@ -524,78 +577,78 @@ async function handleDownloadsGuestMessage(tab, payload) {
   if (isDownloadsPage(tab.url)) await injectDownloadsPage(tab);
 }
 
-function wireWebview(tab) {
-  const wv = tab.webview;
+function handleTabEvent(msg) {
+  const tabId = msg?.tabId;
+  const tab = getTab(tabId);
+  if (!tab) return;
+  const type = msg?.type;
 
-  wv.addEventListener("ipc-message", (e) => {
-    if (e.channel === "slop:history") {
-      handleHistoryGuestMessage(tab, e.args[0]).catch(() => {});
-      return;
+  if (type === "guest-message") {
+    if (msg.channel === "slop:history") {
+      handleHistoryGuestMessage(tab, msg.payload).catch(() => {});
+    } else if (msg.channel === "slop:downloads") {
+      handleDownloadsGuestMessage(tab, msg.payload).catch(() => {});
     }
-    if (e.channel === "slop:downloads") {
-      handleDownloadsGuestMessage(tab, e.args[0]).catch(() => {});
-    }
-  });
+    return;
+  }
 
-  const bindWebContentsId = () => {
-    try {
-      tab.webContentsId = wv.getWebContentsId();
-      wv.setZoomFactor(tab.zoom ?? ZOOM_DEFAULT);
-    } catch (_) {}
-  };
-  wv.addEventListener("dom-ready", () => {
-    bindWebContentsId();
+  if (type === "dom-ready") {
+    if (msg.webContentsId) tab.webContentsId = msg.webContentsId;
+    applyTabZoom(tab, tab.zoom ?? ZOOM_DEFAULT, false);
     if (isHistoryPage(tab.url)) injectHistoryPage(tab);
     if (isDownloadsPage(tab.url)) injectDownloadsPage(tab);
+    if (isCookiesPage(tab.url)) injectCookiesPage(tab);
     if (isSettingsPage(tab.url)) injectSettingsPage(tab);
-  });
+    if (isHome(tab.url) && tab.id === activeId) focusHomeSearch(tab, 50);
+    return;
+  }
 
-  wv.addEventListener("did-finish-load", () => {
+  if (type === "did-finish-load") {
     if (isHistoryPage(tab.url)) injectHistoryPage(tab);
     if (isDownloadsPage(tab.url)) injectDownloadsPage(tab);
+    if (isCookiesPage(tab.url)) injectCookiesPage(tab);
     if (isSettingsPage(tab.url)) injectSettingsPage(tab);
-  });
+    if (isHome(tab.url) && tab.id === activeId) focusHomeSearch(tab, 50);
+    return;
+  }
 
-  wv.addEventListener("page-title-updated", (e) => {
-    const href = wv.getURL();
+  if (type === "page-title-updated") {
+    const href = msg.url || tab.url;
     const next = isHome(href)
       ? "Home"
       : isHistoryPage(href)
         ? "History"
         : isDownloadsPage(href)
           ? "Downloads"
-          : isSettingsPage(href)
-            ? "Settings"
-            : e.title;
+          : isCookiesPage(href)
+            ? "Cookies"
+            : isSettingsPage(href)
+              ? "Settings"
+              : msg.title;
     if (next === tab.title) return;
     tab.title = next;
     updateTabPresentation(tab);
-    if (tab.id === activeId) updateSlopAiSummarizeButton();
-  });
+    return;
+  }
 
-  wv.addEventListener("page-favicon-updated", (e) => {
-    const icon = pickFavicon(e.favicons);
+  if (type === "page-favicon-updated") {
+    const icon = pickFavicon(msg.favicons);
     if (icon && icon !== tab.favicon) {
       tab.favicon = icon;
       updateTabPresentation(tab);
       syncDownloadFaviconsForTab(tab).catch(() => {});
-      if (tab.id === activeId) updateSlopAiSummarizeButton();
     }
-  });
+    return;
+  }
 
-  wv.addEventListener("did-stop-loading", () => {
-    if (tab.id === activeId) {
-      updateNavButtons();
-    }
-  });
+  if (type === "did-stop-loading") {
+    if (tab.id === activeId) updateNavButtons();
+    return;
+  }
 
-  const onNav = () => {
+  if (type === "did-navigate") {
     const prevOrigin = faviconFallback(tab.url);
-    tab.url = wv.getURL();
-    // Immediately guess /favicon.ico so the icon shows without waiting for
-    // the page to finish loading; page-favicon-updated overrides it with the
-    // site's declared icon as soon as it is known. Same-origin navigations
-    // keep the current icon (no flicker).
+    tab.url = msg.url || tab.url;
     const nextOrigin = faviconFallback(tab.url);
     if (nextOrigin !== prevOrigin || !tab.favicon) {
       tab.favicon = nextOrigin;
@@ -605,7 +658,8 @@ function wireWebview(tab) {
     else if (isDownloadsPage(tab.url)) {
       tab.title = "Downloads";
       if (tab.id === activeId) dismissDownloadIndicator();
-    } else if (isSettingsPage(tab.url)) tab.title = "Settings";
+    } else if (isCookiesPage(tab.url)) tab.title = "Cookies";
+    else if (isSettingsPage(tab.url)) tab.title = "Settings";
     pushSessionHistory(tab);
     if (tab.id === activeId) {
       syncAddressBar(tab.url);
@@ -613,26 +667,26 @@ function wireWebview(tab) {
       updateNavButtons();
       updatePrivateChrome();
       updateTabPresentation(tab);
-      updateSlopAiSummarizeButton();
+      if (isHome(tab.url)) focusHomeSearch(tab, 50);
     } else {
       updateTabPresentation(tab);
       updateTabChromeClasses();
     }
-  };
-  wv.addEventListener("did-navigate", onNav);
-  wv.addEventListener("did-navigate-in-page", () => {
-    tab.url = wv.getURL();
+    return;
+  }
+
+  if (type === "did-navigate-in-page") {
+    tab.url = msg.url || tab.url;
     if (tab.id === activeId) {
       syncAddressBar(tab.url);
       syncBookmarkButton(tab.url);
-      updateSlopAiSummarizeButton();
+      if (isHome(tab.url)) focusHomeSearch(tab, 50);
     }
-  });
+    return;
+  }
 
-  // Show a simple dark error page instead of a blank view on load failures.
-  wv.addEventListener("did-fail-load", (e) => {
-    // -3 = ERR_ABORTED (e.g. user navigated away) - not a real failure.
-    if (!e.isMainFrame || e.errorCode === -3) return;
+  if (type === "did-fail-load") {
+    if (msg.errorCode === -3) return;
     const html =
       '<body style="margin:0;display:flex;align-items:center;justify-content:center;' +
       'height:100vh;background:#0e0f13;color:#e6e8ef;font-family:Segoe UI,sans-serif">' +
@@ -640,24 +694,69 @@ function wireWebview(tab) {
       '<div style="font-size:40px;margin-bottom:12px">&#9888;</div>' +
       '<h2 style="margin:0 0 8px;font-weight:600">Page could not be loaded</h2>' +
       '<p style="color:#8b90a3;font-size:14px;word-break:break-all;margin:0">' +
-      escapeHTML(e.validatedURL || tab.url) +
+      escapeHTML(msg.validatedURL || tab.url) +
       "</p>" +
       '<p style="color:#8b90a3;font-size:12px;margin-top:10px">' +
-      escapeHTML(e.errorDescription || "Error " + e.errorCode) +
+      escapeHTML(msg.errorDescription || "Error " + msg.errorCode) +
       "</p></div></body>";
-    wv.executeJavaScript(
-      "document.documentElement.innerHTML = " + JSON.stringify(html)
-    ).catch(() => {});
-  });
+    window.slopAPI.tabs
+      .executeJavaScript(
+        tab.id,
+        "document.documentElement.innerHTML = " + JSON.stringify(html)
+      )
+      .catch(() => {});
+  }
 }
+
+window.slopAPI.tabs.onEvent(handleTabEvent);
+
+window.slopAPI.tabs.onMainCreated((payload) => {
+  const tabId = payload?.tabId;
+  if (tabId == null || getTab(tabId)) return;
+  const url = payload.url || HOME;
+  tabs.push({
+    id: tabId,
+    title: isHome(url) ? "Home" : "New tab",
+    url,
+    favicon: null,
+    private: false,
+    partition: payload.partition || PARTITION,
+    zoom: ZOOM_DEFAULT,
+    webContentsId: payload.webContentsId ?? null,
+  });
+  renderTabs();
+  setActive(tabId, { fromMain: true });
+});
+
+window.slopAPI.tabs.onMainClosed(({ tabId }) => {
+  const idx = tabs.findIndex((t) => t.id === tabId);
+  if (idx === -1) return;
+  tabs.splice(idx, 1);
+  tabAdCounts.delete(tabId);
+  if (activeId === tabId) {
+    const next = tabs[idx] || tabs[idx - 1];
+    if (next) setActive(next.id, { fromMain: true });
+    else createTab(HOME);
+  }
+  renderTabs();
+});
+
+window.slopAPI.tabs.onMainActivated(({ tabId }) => {
+  if (getTab(tabId)) setActive(tabId, { fromMain: true });
+});
 
 function updateNavButtons() {
   const t = activeTab();
   if (!t) return;
-  try {
-    els.back.disabled = !t.webview.canGoBack();
-    els.forward.disabled = !t.webview.canGoForward();
-  } catch (_) {}
+  Promise.all([
+    window.slopAPI.tabs.canGoBack(t.id),
+    window.slopAPI.tabs.canGoForward(t.id),
+  ])
+    .then(([back, forward]) => {
+      els.back.disabled = !back;
+      els.forward.disabled = !forward;
+    })
+    .catch(() => {});
 }
 
 /* ---------- Toolbar ---------- */
@@ -668,30 +767,75 @@ els.urlForm.addEventListener("submit", (e) => {
   const url = toURL(els.url.value);
   // Navigating again before the previous load finishes rejects with
   // ERR_ABORTED - expected, so swallow it instead of logging an error.
-  Promise.resolve(t.webview.loadURL(url)).catch(() => {});
-  t.webview.focus();
+  Promise.resolve(window.slopAPI.tabs.loadURL(t.id, url)).catch(() => {});
+  window.slopAPI.tabs.focus(t.id).catch(() => {});
 });
 
-els.back.onclick = () => activeTab() && activeTab().webview.goBack();
-els.forward.onclick = () => activeTab() && activeTab().webview.goForward();
+els.back.onclick = () => {
+  const t = activeTab();
+  if (t) window.slopAPI.tabs.goBack(t.id).catch(() => {});
+};
+els.forward.onclick = () => {
+  const t = activeTab();
+  if (t) window.slopAPI.tabs.goForward(t.id).catch(() => {});
+};
 
 async function reloadActiveTab() {
   const t = activeTab();
   if (!t) return;
-  try {
-    const id = t.webview.getWebContentsId();
-    if (id) await window.slopAPI.setWebviewBackground(id);
-  } catch (_) {}
-  try {
-    t.webview.reload();
-  } catch (_) {}
+  window.slopAPI.tabs.reload(t.id).catch(() => {});
 }
 
 els.reload.onclick = () => reloadActiveTab();
 els.bookmarkBtn.onclick = () => toggleBookmark();
 els.newTab.onclick = () => createTab(HOME);
 
-/* ---------- Slop filter dropdown (UI only) ---------- */
+/* ---------- Slop filter dropdown (top-layer overlay) ---------- */
+let slopPanelOverlayOpen = false;
+
+function slopPanelIsOpen() {
+  return slopPanelOverlayOpen;
+}
+
+function gatherSlopPanelData() {
+  const t = activeTab();
+  return {
+    slopEnabled: filterUI.slopEnabled,
+    adBlockEnabled: filterUI.adBlockEnabled,
+    adPageCount: t ? tabAdCounts.get(t.id) || 0 : 0,
+    slopPageCount: 0,
+    adTotalCount: filterUI.totalAdBlocked,
+    slopTotalCount: filterUI.totalSlopBlocked,
+  };
+}
+
+async function refreshSlopPanelOverlay() {
+  if (!slopPanelOverlayOpen || !els.slopBadge) return;
+  updateSlopPanel();
+  const rect = els.slopBadge.getBoundingClientRect();
+  await window.slopAPI.slopPanelOverlay.show(
+    {
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height,
+    },
+    gatherSlopPanelData()
+  );
+}
+
+function runSlopPanelAction(action) {
+  if (action === "slop-toggle") {
+    setSlopFilterEnabled(!filterUI.slopEnabled);
+    if (slopPanelOverlayOpen) refreshSlopPanelOverlay();
+    return;
+  }
+  if (action === "adblock-toggle") {
+    setAdBlockerEnabled(!filterUI.adBlockEnabled);
+    if (slopPanelOverlayOpen) refreshSlopPanelOverlay();
+  }
+}
+
 function setSlopFilterEnabled(enabled) {
   filterUI.slopEnabled = enabled;
   updateSlopPanel();
@@ -726,13 +870,32 @@ function updateSlopPanel() {
 }
 
 function toggleSlopPanel(force) {
-  const show = force ?? els.slopPanel.classList.contains("hidden");
+  const show = force ?? !slopPanelOverlayOpen;
   if (show) {
     toggleMenu(false);
+    els.slopPanel?.classList.add("hidden");
     updateSlopPanel();
-    renderIcons(els.slopPanel);
+    const rect = els.slopBadge?.getBoundingClientRect();
+    if (!rect) return;
+    slopPanelOverlayOpen = true;
+    window.slopAPI.slopPanelOverlay
+      .show(
+        {
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        },
+        gatherSlopPanelData()
+      )
+      .catch(() => {
+        slopPanelOverlayOpen = false;
+      });
+  } else {
+    slopPanelOverlayOpen = false;
+    els.slopPanel?.classList.add("hidden");
+    window.slopAPI.slopPanelOverlay.hide().catch(() => {});
   }
-  els.slopPanel.classList.toggle("hidden", !show);
 }
 
 els.slopBadge.onclick = (e) => {
@@ -753,7 +916,7 @@ function historyEntryFromTab(tab) {
 }
 
 function pushSessionHistory(tab) {
-  if (isHome(tab.url) || isHistoryPage(tab.url) || isDownloadsPage(tab.url) || isSettingsPage(tab.url))
+  if (isHome(tab.url) || isHistoryPage(tab.url) || isDownloadsPage(tab.url) || isCookiesPage(tab.url) || isSettingsPage(tab.url))
     return;
   const entry = historyEntryFromTab(tab);
   if (sessionHistory[0]?.url === entry.url) {
@@ -783,8 +946,8 @@ function openRecentUrl(url) {
   if (!url) return;
   const tab = activeTab();
   if (tab) {
-    Promise.resolve(tab.webview.loadURL(url)).catch(() => {});
-    tab.webview.focus();
+    Promise.resolve(window.slopAPI.tabs.loadURL(tab.id, url)).catch(() => {});
+    window.slopAPI.tabs.focus(tab.id).catch(() => {});
   } else {
     createTab(url);
   }
@@ -806,16 +969,15 @@ async function refreshBrowseHistory() {
   } catch (_) {
     browseHistory = [];
   }
-  if (!els.menu.classList.contains("hidden")) {
-    renderHistorySubmenu();
-  }
+  if (menuIsOpen()) refreshMenuOverlay();
 }
 
 async function injectHistoryPage(tab) {
   await refreshBrowseHistory();
   const payload = JSON.stringify(browseHistory);
-  tab.webview
+  window.slopAPI.tabs
     .executeJavaScript(
+      tab.id,
       "(function(d){function apply(){if(typeof window.renderSlopHistory==='function'){window.renderSlopHistory(d);return true}return false}if(!apply())document.addEventListener('DOMContentLoaded',function(){apply()},{once:true})})(" +
         payload +
         ")"
@@ -829,8 +991,9 @@ async function injectDownloadsPage(tab) {
     entries = (await window.slopAPI.downloads.getAll()) || [];
   } catch (_) {}
   const payload = JSON.stringify(entries);
-  tab.webview
+  window.slopAPI.tabs
     .executeJavaScript(
+      tab.id,
       "(function(d){function apply(){if(typeof window.renderSlopDownloads==='function'){window.renderSlopDownloads(d);return true}return false}if(!apply())document.addEventListener('DOMContentLoaded',function(){apply()},{once:true})})(" +
         payload +
         ")"
@@ -843,8 +1006,9 @@ function injectSettingsPage(tab) {
     version: window.slopAPI.version,
     buildId: window.slopAPI.buildId,
   });
-  tab.webview
+  window.slopAPI.tabs
     .executeJavaScript(
+      tab.id,
       "(function(d){function apply(){if(typeof window.renderSlopSettings==='function'){window.renderSlopSettings(d);return true}return false}if(!apply())document.addEventListener('DOMContentLoaded',function(){apply()},{once:true})})(" +
         payload +
         ")"
@@ -856,8 +1020,8 @@ function openHistoryPage() {
   toggleMenu(false);
   const tab = activeTab();
   if (tab) {
-    Promise.resolve(tab.webview.loadURL(HISTORY)).catch(() => {});
-    tab.webview.focus();
+    Promise.resolve(window.slopAPI.tabs.loadURL(tab.id, HISTORY)).catch(() => {});
+    window.slopAPI.tabs.focus(tab.id).catch(() => {});
   } else {
     createTab(HISTORY);
   }
@@ -868,22 +1032,68 @@ function openDownloadsPage() {
   toggleMenu(false);
   const tab = activeTab();
   if (tab) {
-    Promise.resolve(tab.webview.loadURL(DOWNLOADS)).catch(() => {});
-    tab.webview.focus();
+    Promise.resolve(window.slopAPI.tabs.loadURL(tab.id, DOWNLOADS)).catch(() => {});
+    window.slopAPI.tabs.focus(tab.id).catch(() => {});
   } else {
     createTab(DOWNLOADS);
   }
 }
 
-function openSettingsPage() {
+let cookiesPageSiteUrl = null;
+
+function tabHttpUrl(tab) {
+  if (!tab || isHome(tab.url) || isHistoryPage(tab.url) || isDownloadsPage(tab.url) || isCookiesPage(tab.url) || isSettingsPage(tab.url))
+    return null;
+  try {
+    const u = new URL(tab.url);
+    if (u.protocol === "http:" || u.protocol === "https:") return u.href;
+  } catch (_) {}
+  return null;
+}
+
+function injectCookiesPage(tab) {
+  const payload = JSON.stringify({
+    partition: tab.partition || PARTITION,
+    private: !!tab.private,
+    siteUrl: cookiesPageSiteUrl,
+  });
+  window.slopAPI.tabs
+    .executeJavaScript(
+      tab.id,
+      "(function(d){function apply(){if(typeof window.renderSlopCookies==='function'){window.renderSlopCookies(d);return true}return false}if(!apply())document.addEventListener('DOMContentLoaded',function(){apply()},{once:true})})(" +
+        payload +
+        ")"
+    )
+    .catch(() => {});
+}
+
+function openCookiesPage() {
   toggleMenu(false);
   const tab = activeTab();
+  cookiesPageSiteUrl = tabHttpUrl(tab);
   if (tab) {
-    Promise.resolve(tab.webview.loadURL(SETTINGS)).catch(() => {});
-    tab.webview.focus();
+    Promise.resolve(window.slopAPI.tabs.loadURL(tab.id, COOKIES)).catch(() => {});
+    window.slopAPI.tabs.focus(tab.id).catch(() => {});
   } else {
-    createTab(SETTINGS);
+    createTab(COOKIES);
   }
+}
+
+function openSettingsPage(panel) {
+  toggleMenu(false);
+  const url = panel ? `${SETTINGS}#${panel}` : SETTINGS;
+  const tab = activeTab();
+  if (tab) {
+    Promise.resolve(window.slopAPI.tabs.loadURL(tab.id, url)).catch(() => {});
+    window.slopAPI.tabs.focus(tab.id).catch(() => {});
+  } else {
+    createTab(url);
+  }
+}
+
+function openExtensionsStore() {
+  toggleMenu(false);
+  createTab(CHROME_WEB_STORE);
 }
 
 function historyRecentItems() {
@@ -892,14 +1102,14 @@ function historyRecentItems() {
 
   closedTabs.forEach((entry, i) => {
     if (items.length >= HISTORY_RECENT_MAX) return;
-    if (!entry?.url || isHome(entry.url) || isHistoryPage(entry.url) || isDownloadsPage(entry.url) || isSettingsPage(entry.url)) return;
+    if (!entry?.url || isHome(entry.url) || isHistoryPage(entry.url) || isDownloadsPage(entry.url) || isCookiesPage(entry.url) || isSettingsPage(entry.url)) return;
     seen.add(entry.url);
     items.push({ ...entry, closed: true, showShortcut: i === 0 });
   });
 
   for (const entry of browseHistory) {
     if (items.length >= HISTORY_RECENT_MAX) break;
-    if (!entry?.url || isHome(entry.url) || isHistoryPage(entry.url) || isDownloadsPage(entry.url) || isSettingsPage(entry.url)) continue;
+    if (!entry?.url || isHome(entry.url) || isHistoryPage(entry.url) || isDownloadsPage(entry.url) || isCookiesPage(entry.url) || isSettingsPage(entry.url)) continue;
     if (seen.has(entry.url)) continue;
     seen.add(entry.url);
     items.push({
@@ -1042,15 +1252,15 @@ function dismissDownloadIndicator() {
   downloadIndicatorAcknowledged = true;
   clearTimeout(downloadHideTimer);
   downloadHideTimer = null;
-  els.downloadPanel?.classList.add("hidden");
-  downloadPanelOpen = false;
-  els.downloadWrap?.classList.add("hidden");
+  closeDownloadPanel();
+  updateDownloadChrome();
 }
 
 function closeDownloadPanel() {
-  els.downloadPanel?.classList.add("hidden");
   downloadPanelOpen = false;
-  dismissDownloadIndicator();
+  els.downloadPanel?.classList.add("hidden");
+  window.slopAPI.downloadPanelOverlay.hide().catch(() => {});
+  updateDownloadChrome();
 }
 
 function revealDownloadIndicator() {
@@ -1102,13 +1312,13 @@ function tabForDownload(entry) {
   const host = hostFromUrl(ref);
   if (host) {
     for (const t of tabs) {
-      if (isHome(t.url) || isHistoryPage(t.url) || isDownloadsPage(t.url) || isSettingsPage(t.url)) continue;
+      if (isHome(t.url) || isHistoryPage(t.url) || isDownloadsPage(t.url) || isCookiesPage(t.url) || isSettingsPage(t.url)) continue;
       if (hostFromUrl(t.url) === host) return t;
     }
   }
   if (entry.state === "progressing") {
     const a = activeTab();
-    if (a && !isHome(a.url) && !isHistoryPage(a.url) && !isDownloadsPage(a.url) && !isSettingsPage(a.url)) {
+    if (a && !isHome(a.url) && !isHistoryPage(a.url) && !isDownloadsPage(a.url) && !isCookiesPage(a.url) && !isSettingsPage(a.url)) {
       return a;
     }
   }
@@ -1196,8 +1406,8 @@ async function syncDownloadFaviconsForTab(tab) {
   }
   if (changed) {
     updateDownloadChrome();
-    renderDownloadsSubmenu();
-    if (downloadPanelOpen) renderDownloadPanel();
+    if (menuIsOpen()) refreshMenuOverlay();
+    if (downloadPanelOpen) refreshDownloadPanelOverlay();
   }
 }
 
@@ -1252,8 +1462,61 @@ async function refreshDownloads() {
   }
   syncDownloadFaviconsFromTabs();
   updateDownloadChrome();
-  if (!els.menu.classList.contains("hidden")) renderDownloadsSubmenu();
-  if (downloadPanelOpen) renderDownloadPanel();
+  if (menuIsOpen()) refreshMenuOverlay();
+  if (downloadPanelOpen) refreshDownloadPanelOverlay();
+}
+
+function gatherDownloadPanelData() {
+  return {
+    entries: downloadEntries.slice(0, 12).map((entry) => ({
+      id: entry.id,
+      filename: entry.filename,
+      receivedBytes: entry.receivedBytes,
+      totalBytes: entry.totalBytes,
+      state: entry.state,
+      stateLabel: downloadStateLabel(entry),
+      progress: downloadProgress(entry),
+      sizeLabel: formatByteRange(entry.receivedBytes, entry.totalBytes),
+      favicon: resolveDownloadFavicon(entry),
+    })),
+  };
+}
+
+async function refreshDownloadPanelOverlay() {
+  if (!downloadPanelOpen || !els.downloadBtn) return;
+  const rect = els.downloadBtn.getBoundingClientRect();
+  await window.slopAPI.downloadPanelOverlay.show(
+    {
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height,
+    },
+    gatherDownloadPanelData()
+  );
+}
+
+function runDownloadPanelAction(action, detail = {}) {
+  const id = detail.id;
+  if (action === "downloads-clear-all") {
+    window.slopAPI.downloads
+      .clear()
+      .then(() => refreshDownloads())
+      .catch(() => {});
+    return;
+  }
+  if (action === "downloads-cancel" && id) {
+    window.slopAPI.downloads.cancel(id).catch(() => {});
+    if (downloadPanelOpen) refreshDownloadPanelOverlay();
+    return;
+  }
+  if (action === "downloads-open-file" && id) {
+    window.slopAPI.downloads.open(id).catch(() => {});
+    return;
+  }
+  if (action === "downloads-show-folder" && id) {
+    window.slopAPI.downloads.showInFolder(id).catch(() => {});
+  }
 }
 
 function downloadsRecentItems() {
@@ -1299,546 +1562,6 @@ function renderDownloadsSubmenu() {
     list.appendChild(btn);
   }
   renderIcons(list);
-}
-
-/* ---------- SlopAI chats (menu + panel) ---------- */
-const SLOPAI_CHATS_KEY = "slop-ai-chats";
-const SLOPAI_CHATS_MAX = 50;
-let slopAiChats = [];
-let activeSlopAiChatId = null;
-let slopAiStreaming = false;
-let slopAiStreamText = "";
-let slopAiStreamContent = null;
-
-function loadSlopAiChats() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(SLOPAI_CHATS_KEY));
-    slopAiChats = Array.isArray(raw)
-      ? raw.filter((c) => c && c.id && c.title)
-      : [];
-  } catch (_) {
-    slopAiChats = [];
-  }
-  slopAiChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-}
-
-function saveSlopAiChats() {
-  try {
-    localStorage.setItem(
-      SLOPAI_CHATS_KEY,
-      JSON.stringify(slopAiChats.slice(0, SLOPAI_CHATS_MAX))
-    );
-  } catch (_) {}
-}
-
-function newSlopAiChatId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-}
-
-function slopAiChatHasMessages(chat) {
-  return Array.isArray(chat?.messages) && chat.messages.length > 0;
-}
-
-function getOrCreateEmptySlopAiChat() {
-  if (activeSlopAiChatId) {
-    const active = slopAiChats.find((c) => c.id === activeSlopAiChatId);
-    if (active && !slopAiChatHasMessages(active)) return active;
-  }
-  const empty = slopAiChats.find((c) => !slopAiChatHasMessages(c));
-  if (empty) return empty;
-  return createSlopAiChat();
-}
-
-function createSlopAiChat(title = "New chat") {
-  const chat = {
-    id: newSlopAiChatId(),
-    title: String(title || "New chat").trim() || "New chat",
-    updatedAt: Date.now(),
-    messages: [],
-  };
-  slopAiChats.unshift(chat);
-  if (slopAiChats.length > SLOPAI_CHATS_MAX) slopAiChats.length = SLOPAI_CHATS_MAX;
-  saveSlopAiChats();
-  return chat;
-}
-
-function touchSlopAiChat(id) {
-  const chat = slopAiChats.find((c) => c.id === id);
-  if (!chat) return null;
-  chat.updatedAt = Date.now();
-  slopAiChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  saveSlopAiChats();
-  return chat;
-}
-
-function chatTitleFromText(text) {
-  const t = String(text || "").trim();
-  if (!t) return "New chat";
-  const line = t.split(/\n/)[0].trim();
-  return line.length > 42 ? line.slice(0, 42) + "…" : line;
-}
-
-function clearSlopAiStreamUI() {
-  slopAiStreamText = "";
-  slopAiStreamContent = null;
-}
-
-function beginSlopAiStreamUI() {
-  const list = slopAiMessagesEl();
-  if (!list) return;
-  list.querySelector(".slopai-msg-loading")?.remove();
-  clearSlopAiStreamUI();
-  const row = buildSlopAiMessageEl({ role: "assistant", text: "" });
-  row.classList.add("slopai-msg-streaming");
-  slopAiStreamContent = row.querySelector(".slopai-md");
-  if (slopAiStreamContent) slopAiStreamContent.classList.add("slopai-md-streaming");
-  list.appendChild(row);
-  scrollSlopAiToBottom();
-}
-
-function appendSlopAiStream(delta) {
-  if (!delta) return;
-  slopAiStreamText += delta;
-  if (slopAiStreamContent) slopAiStreamContent.textContent = slopAiStreamText;
-  scrollSlopAiToBottom();
-}
-
-function finishSlopAiStreamUI() {
-  if (slopAiStreamContent && slopAiStreamText) {
-    slopAiStreamContent.classList.remove("slopai-md-streaming");
-    slopAiStreamContent.textContent = "";
-    slopAiStreamContent.innerHTML = renderMarkdown(slopAiStreamText);
-    enhanceMarkdown(slopAiStreamContent);
-    slopAiStreamContent.closest(".slopai-msg-streaming")?.classList.remove("slopai-msg-streaming");
-  }
-  clearSlopAiStreamUI();
-}
-
-function showSlopAiStreamError(message) {
-  const list = slopAiMessagesEl();
-  list?.querySelector(".slopai-msg-loading")?.remove();
-  if (slopAiStreamContent) {
-    slopAiStreamContent.classList.add("slopai-md-error");
-    slopAiStreamContent.classList.remove("slopai-md-streaming");
-    slopAiStreamContent.textContent = message;
-    slopAiStreamContent.closest(".slopai-msg-streaming")?.classList.remove("slopai-msg-streaming");
-  } else if (list) {
-    list.appendChild(
-      buildSlopAiMessageEl({
-        role: "assistant",
-        text: message,
-        error: true,
-      })
-    );
-  }
-  clearSlopAiStreamUI();
-  scrollSlopAiToBottom();
-}
-
-function slopAiStreamPromise(payload) {
-  return new Promise((resolve, reject) => {
-    let text = "";
-    window.slopAPI.slopAi
-      .stream(payload, {
-        onChunk: (delta) => {
-          if (!slopAiStreamContent) beginSlopAiStreamUI();
-          appendSlopAiStream(delta);
-        },
-        onDone: (full) => {
-          text = full || slopAiStreamText;
-          resolve(text);
-        },
-        onError: (error) => reject(new Error(error || "Request failed")),
-      })
-      .then((res) => {
-        if (!res?.ok && !text) reject(new Error(res?.error || "Request failed"));
-      })
-      .catch(reject);
-  });
-}
-
-function scrollSlopAiToBottom() {
-  const body = els.slopAiBody;
-  if (!body) return;
-  requestAnimationFrame(() => {
-    body.scrollTop = body.scrollHeight;
-  });
-}
-
-function slopAiMessagesEl() {
-  if (!els.slopAiBody) return null;
-  let list = els.slopAiBody.querySelector(".slopai-messages");
-  if (!list) {
-    els.slopAiBody.replaceChildren();
-    list = document.createElement("div");
-    list.className = "slopai-messages";
-    els.slopAiBody.appendChild(list);
-  }
-  return list;
-}
-
-function buildSlopAiMessageEl(msg) {
-  const row = document.createElement("div");
-  if (msg.role === "user") {
-    row.className = "slopai-msg slopai-msg-user";
-    const bubble = document.createElement("div");
-    bubble.className = "slopai-bubble";
-    bubble.textContent = msg.text || "";
-    row.appendChild(bubble);
-    return row;
-  }
-
-  row.className = "slopai-msg slopai-msg-assistant";
-  if (msg.role === "loading") {
-    row.classList.add("slopai-msg-loading");
-  }
-  const content = document.createElement("div");
-  content.className = "slopai-md";
-  if (msg.role === "loading") {
-    content.classList.add("slopai-typing");
-    content.innerHTML =
-      '<span class="slopai-dot"></span><span class="slopai-dot"></span><span class="slopai-dot"></span>';
-    row.appendChild(content);
-    return row;
-  }
-  if (msg.error) {
-    content.classList.add("slopai-md-error");
-    content.textContent = msg.text || "Something went wrong.";
-  } else {
-    content.innerHTML = renderMarkdown(msg.text || "");
-    enhanceMarkdown(content);
-  }
-  row.appendChild(content);
-  return row;
-}
-
-function renderSlopAiMessages(chat) {
-  const list = slopAiMessagesEl();
-  if (!list || !chat) return;
-  list.replaceChildren();
-  const msgs = Array.isArray(chat.messages) ? chat.messages : [];
-  for (const m of msgs) {
-    list.appendChild(buildSlopAiMessageEl(m));
-  }
-  if (slopAiStreaming) {
-    list.appendChild(buildSlopAiMessageEl({ role: "loading" }));
-  }
-  scrollSlopAiToBottom();
-}
-
-function renderSlopAiPanel(chat) {
-  if (els.slopAiInput) els.slopAiInput.value = "";
-  updateSlopAiComposerSend();
-  resizeSlopAiInput();
-  if (chat) renderSlopAiMessages(chat);
-  else if (els.slopAiBody) els.slopAiBody.replaceChildren();
-}
-
-function updateSlopAiComposerSend() {
-  const btn = els.slopAiSend;
-  const input = els.slopAiInput;
-  if (!btn || !input) return;
-  const hasText = !!input.value.trim();
-  const canSend = hasText && !slopAiStreaming;
-  btn.disabled = !canSend;
-  btn.classList.toggle("ready", canSend);
-}
-
-function resizeSlopAiInput() {
-  const input = els.slopAiInput;
-  if (!input) return;
-  input.style.height = "auto";
-  input.style.height = input.scrollHeight + "px";
-}
-
-function fillSlopAiTabIcon(wrap, tab) {
-  if (!wrap || !tab) return;
-  wrap.replaceChildren();
-  wrap.classList.remove("slopai-summarize-icon-fallback");
-
-  const candidates = [];
-  const push = (url) => {
-    if (url && !candidates.includes(url)) candidates.push(url);
-  };
-  push(tab.favicon);
-  push(faviconFallback(tab.url));
-
-  if (!candidates.length) {
-    wrap.classList.add("slopai-summarize-icon-fallback");
-    wrap.innerHTML = GLOBE_SVG;
-    return;
-  }
-
-  const img = document.createElement("img");
-  img.className = "slopai-summarize-icon-img";
-  img.alt = "";
-  img.referrerPolicy = "no-referrer";
-  let idx = 0;
-  img.onerror = () => {
-    idx += 1;
-    if (idx < candidates.length) {
-      img.src = candidates[idx];
-      return;
-    }
-    wrap.classList.add("slopai-summarize-icon-fallback");
-    wrap.innerHTML = GLOBE_SVG;
-  };
-  img.src = candidates[0];
-  wrap.appendChild(img);
-}
-
-function fillSlopAiSummarizeIcon(tab) {
-  fillSlopAiTabIcon(els.slopAiSummarizeIcon, tab);
-}
-
-async function extractSlopAiPageContext(tab) {
-  if (!tab?.webview || !canSummarizePage(tab.url)) return null;
-  try {
-    const raw = await tab.webview.executeJavaScript(PAGE_CONTEXT_EXTRACTOR, true);
-    if (!raw || typeof raw !== "object") return null;
-    return {
-      title: String(raw.title || tab.title || "").trim(),
-      url: String(raw.url || tab.url || "").trim(),
-      description: String(raw.description || "").trim(),
-      text: String(raw.text || "").trim(),
-      truncated: !!raw.truncated,
-      extractedAt: Date.now(),
-    };
-  } catch (_) {
-    return null;
-  }
-}
-
-function updateSlopAiContextUI() {
-  const wrap = els.slopAiContextWrap;
-  if (!wrap) return;
-  const tab = activeTab();
-  const show = slopAiPanelOpen && !!(tab && canSummarizePage(tab.url));
-  wrap.classList.toggle("hidden", !show);
-  if (!show) return;
-  fillSlopAiTabIcon(els.slopAiContextIcon, tab);
-  const label = els.slopAiContextLabel;
-  if (label) label.textContent = tab.title || "Current page";
-  wrap.title = tab.url || "AI has context from this page";
-}
-
-function updateSlopAiSummarizeButton() {
-  const wrap = els.slopAiSummarizeWrap;
-  if (!wrap) return;
-  const tab = activeTab();
-  const show = slopAiPanelOpen && !!(tab && canSummarizePage(tab.url));
-  wrap.classList.toggle("hidden", !show);
-  if (show) fillSlopAiSummarizeIcon(tab);
-  updateSlopAiContextUI();
-}
-
-async function summarizeSlopAiPageContent() {
-  const tab = activeTab();
-  if (!tab || !canSummarizePage(tab.url) || slopAiStreaming) return;
-  if (!activeSlopAiChatId) openSlopAiChat();
-  if (!activeSlopAiChatId) return;
-  await sendSlopAiMessage("Summarize the content of this page.");
-}
-
-async function sendSlopAiMessage(presetText) {
-  const input = els.slopAiInput;
-  if (slopAiStreaming) return;
-  const text = (typeof presetText === "string" ? presetText : input?.value || "").trim();
-  if (!text) return;
-  if (!activeSlopAiChatId) openSlopAiChat();
-  if (!activeSlopAiChatId) return;
-  const chat = slopAiChats.find((c) => c.id === activeSlopAiChatId);
-  if (!chat) return;
-
-  if (!Array.isArray(chat.messages)) chat.messages = [];
-  chat.messages.push({ role: "user", text, at: Date.now() });
-  if (!chat.title || chat.title === "New chat") {
-    chat.title = chatTitleFromText(text);
-  }
-  saveSlopAiChats();
-  touchSlopAiChat(activeSlopAiChatId);
-
-  if (typeof presetText !== "string" && input) {
-    input.value = "";
-    resizeSlopAiInput();
-  }
-  updateSlopAiComposerSend();
-  renderSlopAiMessages(chat);
-
-  slopAiStreaming = true;
-  updateSlopAiComposerSend();
-  renderSlopAiMessages(chat);
-
-  const tab = activeTab();
-  const pageContext = await extractSlopAiPageContext(tab);
-  const apiMessages = buildSlopAiApiMessages(
-    chat.messages.filter((m) => (m.role === "user" || m.role === "assistant") && !m.error),
-    pageContext
-  );
-
-  beginSlopAiStreamUI();
-
-  try {
-    const reply = await slopAiStreamPromise({ messages: apiMessages });
-    finishSlopAiStreamUI();
-    chat.messages.push({ role: "assistant", text: reply, at: Date.now() });
-    saveSlopAiChats();
-    touchSlopAiChat(activeSlopAiChatId);
-  } catch (err) {
-    const message = err?.message || "Something went wrong.";
-    showSlopAiStreamError(message);
-    chat.messages.push({
-      role: "assistant",
-      text: message,
-      error: true,
-      at: Date.now(),
-    });
-    saveSlopAiChats();
-  } finally {
-    slopAiStreaming = false;
-    updateSlopAiComposerSend();
-    if (!els.menu.classList.contains("hidden")) renderSlopAiSubmenu();
-  }
-}
-
-function focusSlopAiComposer() {
-  requestAnimationFrame(() => els.slopAiInput?.focus());
-}
-
-function updateSlopAiChrome() {
-  const btn = els.slopAiCloseChat;
-  if (!btn) return;
-  btn.classList.toggle("visible", slopAiPanelOpen);
-  btn.setAttribute("aria-hidden", slopAiPanelOpen ? "false" : "true");
-  if (slopAiPanelOpen) {
-    renderIcons(btn);
-    renderIcons(els.slopAiComposer);
-  }
-  updateSlopAiSummarizeButton();
-}
-
-function switchSlopAiChat(id) {
-  loadSlopAiChats();
-  const chat = touchSlopAiChat(id) || slopAiChats.find((c) => c.id === id);
-  if (!chat) return;
-  activeSlopAiChatId = chat.id;
-  renderSlopAiPanel(chat);
-  if (!slopAiPanelOpen) {
-    toggleSlopAiPanel(true);
-  } else {
-    updateSlopAiChrome();
-    focusSlopAiComposer();
-  }
-  if (!els.menu.classList.contains("hidden")) renderSlopAiSubmenu();
-}
-
-function openSlopAiChat(id) {
-  loadSlopAiChats();
-  let chat = null;
-  if (id) {
-    chat = touchSlopAiChat(id) || slopAiChats.find((c) => c.id === id);
-  } else {
-    chat = getOrCreateEmptySlopAiChat();
-  }
-  if (!chat) return;
-
-  activeSlopAiChatId = chat.id;
-  renderSlopAiPanel(chat);
-  if (slopAiPanelOpen) {
-    updateSlopAiChrome();
-    focusSlopAiComposer();
-  } else {
-    toggleSlopAiPanel(true);
-  }
-  if (!els.menu.classList.contains("hidden")) renderSlopAiSubmenu();
-}
-
-function slopAiRecentItems() {
-  loadSlopAiChats();
-  return slopAiChats.slice(0, SLOPAI_CHATS_MENU_MAX);
-}
-
-function removeSlopAiChat(id) {
-  const sid = String(id || "");
-  if (!sid) return;
-  loadSlopAiChats();
-  const before = slopAiChats.length;
-  slopAiChats = slopAiChats.filter((c) => c.id !== sid);
-  if (slopAiChats.length === before) return;
-  saveSlopAiChats();
-
-  const wasActive = activeSlopAiChatId === sid;
-  if (wasActive) {
-    const next = slopAiChats[0];
-    if (next) {
-      switchSlopAiChat(next.id);
-    } else {
-      activeSlopAiChatId = null;
-      closeSlopAiPanel();
-    }
-  }
-
-  requestAnimationFrame(() => {
-    if (!els.menu.classList.contains("hidden")) renderSlopAiSubmenu();
-    keepSubmenuOpen(els.slopAiSubWrap);
-  });
-}
-
-function scheduleRemoveSlopAiChat(id) {
-  requestAnimationFrame(() => removeSlopAiChat(id));
-}
-
-function renderSlopAiSubmenu() {
-  const list = els.slopAiRecentList;
-  if (!list) return;
-  list.replaceChildren();
-  const items = slopAiRecentItems();
-
-  if (!items.length) {
-    const empty = document.createElement("div");
-    empty.className = "menu-submenu-empty";
-    empty.textContent = "No chats yet";
-    list.appendChild(empty);
-    return;
-  }
-
-  for (const chat of items) {
-    const row = document.createElement("div");
-    row.className = "menu-recent-row";
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "menu-item menu-recent";
-    btn.dataset.action = "slopai-open-chat-id";
-    btn.dataset.id = chat.id;
-    btn.setAttribute("role", "menuitem");
-
-    const iconWrap = document.createElement("span");
-    iconWrap.className = "menu-recent-icon-wrap menu-recent-fallback slopai-menu-icon";
-    iconWrap.innerHTML =
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-
-    const label = document.createElement("span");
-    label.className = "menu-recent-label";
-    label.textContent = truncate(chat.title, 32);
-
-    btn.appendChild(iconWrap);
-    btn.appendChild(label);
-
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "menu-recent-delete";
-    del.dataset.action = "slopai-delete-chat";
-    del.dataset.id = chat.id;
-    del.title = "Delete chat";
-    del.setAttribute("aria-label", "Delete chat");
-    del.innerHTML =
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>';
-
-    row.appendChild(btn);
-    row.appendChild(del);
-    list.appendChild(row);
-  }
 }
 
 function renderDownloadPanel() {
@@ -1942,19 +1665,19 @@ function renderDownloadPanel() {
 }
 
 function toggleDownloadPanel(force) {
-  const panel = els.downloadPanel;
   const wrap = els.downloadWrap;
-  if (!panel || !wrap) return;
+  if (!wrap || !els.downloadBtn) return;
 
-  const show = force ?? panel.classList.contains("hidden");
+  const show = force ?? !downloadPanelOpen;
 
   if (show) {
     downloadPanelOpen = true;
+    downloadIndicatorAcknowledged = true;
     wrap.classList.remove("hidden");
+    els.downloadPanel?.classList.add("hidden");
     toggleMenu(false);
     toggleSlopPanel(false);
-    refreshDownloads();
-    panel.classList.remove("hidden");
+    refreshDownloads().then(() => refreshDownloadPanelOverlay());
     return;
   }
 
@@ -1969,35 +1692,146 @@ els.downloadBtn?.addEventListener("click", (e) => {
 els.downloadPanel?.addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
-  const action = btn.dataset.action;
-  const id = btn.dataset.id;
-  if (action === "downloads-cancel" && id) {
-    window.slopAPI.downloads.cancel(id).catch(() => {});
-  } else if (action === "downloads-open-file" && id) {
-    window.slopAPI.downloads.open(id).catch(() => {});
-  } else if (action === "downloads-show-folder" && id) {
-    window.slopAPI.downloads.showInFolder(id).catch(() => {});
-  }
+  runDownloadPanelAction(btn.dataset.action, { id: btn.dataset.id });
 });
 
-/* ---------- Menu (dropdown) ---------- */
-function toggleMenu(force) {
-  const show = force ?? els.menu.classList.contains("hidden");
+/* ---------- Menu (dropdown via top-layer WebContentsView) ---------- */
+let menuOverlayOpen = false;
+
+function menuIsOpen() {
+  return menuOverlayOpen;
+}
+
+function gatherMenuOverlayData() {
+  const tab = activeTab();
+  return {
+    history: historyRecentItems(),
+    bookmarks: savedBookmarks.slice(0, BOOKMARKS_MENU_MAX),
+    downloads: downloadsRecentItems().map((entry) => ({
+      id: entry.id,
+      filename: entry.filename,
+      state: entry.state,
+      stateLabel: downloadStateLabel(entry),
+    })),
+    bookmarksThisTabDisabled:
+      !canBookmarkTab(tab) || bookmarkUrls.has(tab?.url),
+    bookmarksAllTabsDisabled: !tabs.some(
+      (t) => canBookmarkTab(t) && !bookmarkUrls.has(t.url)
+    ),
+  };
+}
+
+async function refreshMenuOverlay() {
+  if (!menuOverlayOpen || !els.menuBtn) return;
+  const rect = els.menuBtn.getBoundingClientRect();
+  await window.slopAPI.menuOverlay.show(
+    {
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height,
+    },
+    gatherMenuOverlayData()
+  );
+}
+
+function runMenuAction(action, detail = {}) {
+  if (action === "bookmarks-this-tab") {
+    bookmarkThisTab();
+    toggleMenu(false);
+    return;
+  }
+  if (action === "bookmarks-all-tabs") {
+    bookmarkAllTabs();
+    toggleMenu(false);
+    return;
+  }
+  if (action === "bookmarks-open-url") {
+    openRecentUrl(detail.url);
+    toggleMenu(false);
+    return;
+  }
+  if (action === "history-open") {
+    openHistoryPage();
+    toggleMenu(false);
+    return;
+  }
+  if (action === "history-open-url") {
+    openRecentUrl(detail.url);
+    toggleMenu(false);
+    return;
+  }
+  if (action === "history-reopen") {
+    const url = detail.url;
+    const idx = closedTabs.findIndex((t) => t.url === url);
+    const entry = idx !== -1 ? closedTabs.splice(idx, 1)[0] : null;
+    if (entry) {
+      const tab = createTab(entry.url);
+      tab.title = entry.title;
+      tab.favicon = entry.favicon;
+      updateTabPresentation(tab);
+      renderTabs();
+    }
+    toggleMenu(false);
+    return;
+  }
+  if (action === "downloads-open-page") {
+    openDownloadsPage();
+    toggleMenu(false);
+    return;
+  }
+  if (action === "downloads-open-file") {
+    dismissDownloadIndicator();
+    if (detail.id) window.slopAPI.downloads.open(detail.id).catch(() => {});
+    toggleMenu(false);
+    return;
+  }
+  if (action === "newtab") createTab(HOME);
+  else if (action === "newwindow") window.slopAPI.newWindow({});
+  else if (action === "newprivate") createTab(HOME, { private: true });
+  else if (action === "reload") reloadActiveTab();
+  else if (action === "cookies") openCookiesPage();
+  else if (action === "togglesidebar")
+    setRailCollapsed(!document.body.classList.contains("rail-collapsed"));
+  else if (action === "devtools") {
+    const t = activeTab();
+    if (t) window.slopAPI.tabs.openDevTools(t.id).catch(() => {});
+  } else if (action === "settings") {
+    openSettingsPage();
+    return;
+  } else if (action === "extensions") {
+    openExtensionsStore();
+    return;
+  }
+  toggleMenu(false);
+}
+
+async function toggleMenu(force) {
+  const show = force ?? !menuOverlayOpen;
   if (show) {
     toggleSlopPanel(false);
     closeDownloadPanel();
-    renderHistorySubmenu();
-    renderBookmarksSubmenu();
-    renderDownloadsSubmenu();
-    renderSlopAiSubmenu();
-    renderIcons(els.menu);
+    els.menu?.classList.add("hidden");
+    const rect = els.menuBtn?.getBoundingClientRect();
+    if (!rect) return;
+    menuOverlayOpen = true;
+    await window.slopAPI.menuOverlay.show(
+      {
+        x: rect.left,
+        y: rect.top,
+        width: rect.width,
+        height: rect.height,
+      },
+      gatherMenuOverlayData()
+    );
   } else {
+    menuOverlayOpen = false;
     els.historySubWrap?.classList.remove("sub-open");
     els.bookmarksSubWrap?.classList.remove("sub-open");
     els.downloadsSubWrap?.classList.remove("sub-open");
-    els.slopAiSubWrap?.classList.remove("sub-open");
+    els.menu?.classList.add("hidden");
+    await window.slopAPI.menuOverlay.hide().catch(() => {});
   }
-  els.menu.classList.toggle("hidden", !show);
 }
 
 els.menuBtn.onclick = (e) => {
@@ -2035,7 +1869,6 @@ wireSubmenuHover(els.downloadsSubWrap, () => {
   dismissDownloadIndicator();
   renderDownloadsSubmenu();
 });
-wireSubmenuHover(els.slopAiSubWrap, () => renderSlopAiSubmenu());
 
 els.menu.addEventListener("click", (e) => {
   const item = e.target.closest(".menu-item");
@@ -2044,215 +1877,18 @@ els.menu.addEventListener("click", (e) => {
   if (
     action === "history" ||
     action === "bookmarks" ||
-    action === "downloads" ||
-    action === "slopai"
+    action === "downloads"
   )
     return;
-  if (action === "bookmarks-this-tab") {
-    bookmarkThisTab();
-    toggleMenu(false);
-    return;
-  }
-  if (action === "bookmarks-all-tabs") {
-    bookmarkAllTabs();
-    toggleMenu(false);
-    return;
-  }
-  if (action === "bookmarks-open-url") {
-    openRecentUrl(item.dataset.url);
-    toggleMenu(false);
-    return;
-  }
-  if (action === "history-open") {
-    openHistoryPage();
-    toggleMenu(false);
-    return;
-  }
-  if (action === "history-open-url") {
-    openRecentUrl(item.dataset.url);
-    toggleMenu(false);
-    return;
-  }
-  if (action === "history-reopen") {
-    const url = item.dataset.url;
-    const idx = closedTabs.findIndex((t) => t.url === url);
-    const entry = idx !== -1 ? closedTabs.splice(idx, 1)[0] : null;
-    if (entry) {
-      const tab = createTab(entry.url);
-      tab.title = entry.title;
-      tab.favicon = entry.favicon;
-      updateTabPresentation(tab);
-      renderTabs();
-    }
-    toggleMenu(false);
-    return;
-  }
-  if (action === "downloads-open-page") {
-    openDownloadsPage();
-    toggleMenu(false);
-    return;
-  }
-  if (action === "downloads-open-file") {
-    dismissDownloadIndicator();
-    const id = item.dataset.id;
-    if (id) window.slopAPI.downloads.open(id).catch(() => {});
-    toggleMenu(false);
-    return;
-  }
-  if (action === "slopai-open-chat") {
-    openSlopAiChat();
-    toggleMenu(false);
-    return;
-  }
-  if (action === "slopai-open-chat-id") {
-    openSlopAiChat(item.dataset.id);
-    toggleMenu(false);
-    return;
-  }
-  if (action === "newtab") createTab(HOME);
-  else if (action === "newwindow") window.slopAPI.newWindow({});
-  else if (action === "newprivate") createTab(HOME, { private: true });
-  else if (action === "reload") reloadActiveTab();
-  else if (action === "cookies") openCookieManager();
-  else if (action === "togglesidebar")
-    setRailCollapsed(!document.body.classList.contains("rail-collapsed"));
-  else if (action === "devtools")
-    activeTab() && activeTab().webview.openDevTools();
-  else if (action === "settings") {
-    openSettingsPage();
-    return;
-  }
-  toggleMenu(false);
+  runMenuAction(action, {
+    url: item.dataset.url,
+    id: item.dataset.id,
+  });
 });
-
-/* ---------- Cookie manager ---------- */
-const cookieApi = window.slopAPI.cookies;
-
-function tabHttpUrl(tab) {
-  if (!tab || isHome(tab.url)) return null;
-  try {
-    const u = new URL(tab.url);
-    if (u.protocol === "http:" || u.protocol === "https:") return u.href;
-  } catch (_) {}
-  return null;
-}
-
-function formatCookieExpiry(expirationDate) {
-  if (!expirationDate) return "Session";
-  const d = new Date(expirationDate * 1000);
-  return Number.isNaN(d.getTime()) ? "Session" : d.toLocaleString();
-}
-
-async function refreshCookieList() {
-  const tab = activeTab();
-  if (!tab) return;
-
-  const siteOnly = els.cookieSiteOnly.checked;
-  const pageUrl = tabHttpUrl(tab);
-  const scope =
-    (tab.private ? "Private tab" : "Shared profile") +
-    (siteOnly && pageUrl
-      ? " · " + new URL(pageUrl).hostname
-      : siteOnly
-        ? " · no site loaded"
-        : "");
-
-  els.cookieScope.textContent = scope;
-
-  let list = [];
-  try {
-    if (siteOnly && pageUrl) {
-      list = await cookieApi.getForUrl(tab.partition, pageUrl);
-    } else {
-      list = await cookieApi.getAll(tab.partition);
-    }
-  } catch (_) {
-    list = [];
-  }
-
-  list.sort((a, b) =>
-    (a.domain || "").localeCompare(b.domain || "") ||
-    (a.name || "").localeCompare(b.name || "")
-  );
-
-  els.cookieList.innerHTML = list
-    .map(
-      (c, i) =>
-        `<div class="cookie-row" data-idx="${i}">` +
-        `<div class="cookie-row-name">${escapeHTML(c.name)}</div>` +
-        `<button class="cookie-row-del" type="button" data-del="1">Delete</button>` +
-        `<div class="cookie-row-domain">${escapeHTML((c.domain || "") + (c.path || "/"))}</div>` +
-        `<div class="cookie-row-value">${escapeHTML(truncate(c.value))}</div>` +
-        `<div class="cookie-row-meta">${c.httpOnly ? "HttpOnly · " : ""}${c.secure ? "Secure · " : ""}${formatCookieExpiry(c.expirationDate)}</div>` +
-        `</div>`
-    )
-    .join("");
-
-  els.cookieEmpty.classList.toggle("hidden", list.length > 0);
-  els.cookieList.dataset.cookies = JSON.stringify(list);
-}
-
-function toggleCookieManager(force) {
-  const show = force ?? els.cookieOverlay.classList.contains("hidden");
-  if (show) {
-    toggleMenu(false);
-    toggleSlopPanel(false);
-    els.cookieOverlay.classList.remove("hidden");
-    els.cookieOverlay.setAttribute("aria-hidden", "false");
-    renderIcons(els.cookiePanel);
-    refreshCookieList();
-  } else {
-    els.cookieOverlay.classList.add("hidden");
-    els.cookieOverlay.setAttribute("aria-hidden", "true");
-  }
-}
-
-function openCookieManager() {
-  toggleCookieManager(true);
-}
-
-els.cookieClose.onclick = () => toggleCookieManager(false);
-els.cookieOverlay.addEventListener("click", (e) => {
-  if (e.target === els.cookieOverlay) toggleCookieManager(false);
-});
-els.cookiePanel.addEventListener("click", (e) => e.stopPropagation());
-els.cookieSiteOnly.onchange = () => refreshCookieList();
-
-els.cookieList.addEventListener("click", async (e) => {
-  const btn = e.target.closest("[data-del]");
-  if (!btn) return;
-  const row = btn.closest(".cookie-row");
-  const tab = activeTab();
-  if (!row || !tab) return;
-  const idx = Number(row.dataset.idx);
-  let list = [];
-  try {
-    list = JSON.parse(els.cookieList.dataset.cookies || "[]");
-  } catch (_) {}
-  const cookie = list[idx];
-  if (!cookie) return;
-  await cookieApi.remove(tab.partition, cookie);
-  refreshCookieList();
-});
-
-els.cookieClearSite.onclick = async () => {
-  const tab = activeTab();
-  const pageUrl = tab && tabHttpUrl(tab);
-  if (!tab || !pageUrl) return;
-  await cookieApi.clear(tab.partition, pageUrl);
-  refreshCookieList();
-};
-
-els.cookieClearAll.onclick = async () => {
-  const tab = activeTab();
-  if (!tab) return;
-  await cookieApi.clear(tab.partition);
-  refreshCookieList();
-};
 
 // Click outside closes open dropdowns.
 document.addEventListener("click", (e) => {
-  if (!els.menu.classList.contains("hidden") && !e.target.closest("#menuWrap")) {
+  if (menuIsOpen() && !e.target.closest("#menuWrap")) {
     toggleMenu(false);
   }
   if (
@@ -2262,7 +1898,7 @@ document.addEventListener("click", (e) => {
     closeDownloadPanel();
   }
   if (
-    !els.slopPanel.classList.contains("hidden") &&
+    slopPanelIsOpen() &&
     !e.target.closest("#slopWrap")
   ) {
     toggleSlopPanel(false);
@@ -2274,11 +1910,8 @@ document.addEventListener("keydown", (e) => {
     els.historySubWrap?.classList.remove("sub-open");
     els.bookmarksSubWrap?.classList.remove("sub-open");
     els.downloadsSubWrap?.classList.remove("sub-open");
-    els.slopAiSubWrap?.classList.remove("sub-open");
     closeDownloadPanel();
     toggleSlopPanel(false);
-    toggleSlopAiPanel(false);
-    toggleCookieManager(false);
   }
 });
 
@@ -2345,8 +1978,7 @@ window.slopAPI.onOpenSideURL(({ url, sideId }) => {
   const item = SIDE_RAIL_ITEMS.find((i) => i.id === sideId);
   if (!item || item.type === "tab") return;
   openSidePanel(sideId);
-  const wv = sidePanelWebviews.get(sideId);
-  if (wv) wv.src = url;
+  window.slopAPI.sidePanel.loadURL(sideId, url).catch(() => {});
 });
 
 window.slopAPI.adblock.onBlocked(({ webContentsId, total }) => {
@@ -2355,8 +1987,12 @@ window.slopAPI.adblock.onBlocked(({ webContentsId, total }) => {
   if (tab) {
     tabAdCounts.set(tab.id, (tabAdCounts.get(tab.id) || 0) + 1);
   }
-  if (!tab || tab.id === activeId) refreshFilterPanelCounts();
-  else els.adTotalCount.textContent = String(total);
+  if (!tab || tab.id === activeId) {
+    refreshFilterPanelCounts();
+    if (slopPanelOverlayOpen) refreshSlopPanelOverlay();
+  } else {
+    els.adTotalCount.textContent = String(total);
+  }
 });
 
 window.slopAPI.onZoomChanged(({ webContentsId, factor }) => {
@@ -2382,11 +2018,97 @@ els.close.onclick = () => winApi.close();
 function setMaximized(isMax) {
   document.body.classList.toggle("maximized", !!isMax);
   els.max.title = isMax ? "Restore" : "Maximize";
-  fitActiveSideWebview();
+  fitActiveSidePanel();
 }
 
 winApi.onMaximizedChange(setMaximized);
 winApi.isMaximized().then(setMaximized);
+
+function fitActiveSidePanel() {
+  scheduleContentBoundsSync();
+}
+
+function handleSidePanelEvent(msg) {
+  const integrationId = msg?.integrationId;
+  const item = SIDE_RAIL_ITEMS.find((i) => i.id === integrationId);
+  if (!item || item.type === "tab") return;
+  const type = msg?.type;
+
+  if (type === "page-title-updated" && activeSidePanelId === integrationId) {
+    els.sidePanelTitle.textContent = msg.title || item.label;
+    return;
+  }
+
+  if (type === "page-favicon-updated" && activeSidePanelId === integrationId) {
+    const icon = pickFavicon(msg.favicons);
+    if (icon) {
+      els.sidePanelIcon.innerHTML = `<img src="${escapeHTML(icon)}" alt="">`;
+    }
+    return;
+  }
+
+  if (type === "did-fail-load") {
+    if (msg.errorCode === -3) return;
+    const html =
+      '<body style="margin:0;display:flex;align-items:center;justify-content:center;' +
+      'height:100vh;background:#0e0f13;color:#e6e8ef;font-family:Segoe UI,sans-serif">' +
+      '<div style="text-align:center;max-width:320px;padding:0 16px">' +
+      '<div style="font-size:32px;margin-bottom:10px">&#9888;</div>' +
+      `<h2 style="margin:0 0 8px;font-size:15px;font-weight:600">${escapeHTML(item.label)} could not load</h2>` +
+      '<p style="color:#8b90a3;font-size:12px;margin:0 0 12px">Check your connection and try again.</p>' +
+      `<p style="color:#8b90a3;font-size:11px;word-break:break-all;margin:0">${escapeHTML(msg.validatedURL || item.url)}</p>` +
+      "</div></body>";
+    window.slopAPI.sidePanel
+      .executeJavaScript(
+        integrationId,
+        "document.documentElement.innerHTML = " + JSON.stringify(html)
+      )
+      .catch(() => {});
+    return;
+  }
+
+  if (type === "dom-ready") {
+    scheduleContentBoundsSync();
+    if (integrationId === activeSidePanelId) {
+      window.slopAPI.sidePanel
+        .executeJavaScript(
+          integrationId,
+          "window.dispatchEvent(new Event('resize'))"
+        )
+        .catch(() => {});
+    }
+  }
+}
+
+window.slopAPI.sidePanel.onEvent(handleSidePanelEvent);
+
+async function showSidePanelView(item) {
+  await window.slopAPI.sidePanel.ensure({
+    integrationId: item.id,
+    url: item.url,
+  });
+  await window.slopAPI.sidePanel.setActive(item.id);
+  scheduleContentBoundsSync();
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(async () => {
+      try {
+        const url = await window.slopAPI.sidePanel.getURL(item.id);
+        if (!url || url === "about:blank") {
+          await window.slopAPI.sidePanel.loadURL(item.id, item.url);
+        }
+      } catch (_) {
+        window.slopAPI.sidePanel.loadURL(item.id, item.url).catch(() => {});
+      }
+      scheduleContentBoundsSync();
+    });
+  });
+}
+
+function hideAllSidePanelViews() {
+  window.slopAPI.sidePanel.hideAll().catch(() => {});
+  window.slopAPI.sidePanel.setBounds(null).catch(() => {});
+}
 
 function getSidePanelWidth() {
   try {
@@ -2410,152 +2132,9 @@ function setSidePanelWidth(px, opts = {}) {
       localStorage.setItem("slop-side-panel-width", String(w));
     } catch (_) {}
   }
-  if (!opts.skipWebviewSync) fitActiveSideWebview();
+  if (!opts.skipWebviewSync) fitActiveSidePanel();
+  queueMicrotask(() => scheduleContentBoundsSync());
   return w;
-}
-
-function scheduleSideWebviewSync(wv) {
-  if (!wv) return;
-  clearTimeout(sideFitTimer);
-  sideFitTimer = setTimeout(() => syncSideWebviewLayout(wv), 40);
-}
-
-async function syncSideWebviewLayout(wv) {
-  if (!wv || !els.sidePanelViews || !wv.classList.contains("active")) return;
-
-  const w = els.sidePanelViews.clientWidth;
-  const h = els.sidePanelViews.clientHeight;
-  if (w < 1 || h < 1) return;
-
-  const prev = sideWebviewLayout.get(wv);
-  if (prev && prev.w === w && prev.h === h) return;
-  sideWebviewLayout.set(wv, { w, h });
-
-  wv.style.width = w + "px";
-  wv.style.height = h + "px";
-
-  try {
-    wv.setZoomFactor(1);
-  } catch (_) {}
-
-  try {
-    const id = wv.getWebContentsId();
-    if (id) await window.slopAPI.setWebviewSize(id, w, h);
-  } catch (_) {}
-
-  try {
-    await wv.executeJavaScript(
-      "window.dispatchEvent(new Event('resize'))",
-      false
-    );
-  } catch (_) {}
-}
-
-function fitActiveSideWebview() {
-  if (!activeSidePanelId) return;
-  const wv = sidePanelWebviews.get(activeSidePanelId);
-  if (wv) scheduleSideWebviewSync(wv);
-}
-
-function hideSideWebview(wv) {
-  wv.classList.remove("active");
-  wv.style.width = "0";
-  wv.style.height = "0";
-  wv.style.visibility = "hidden";
-  wv.style.pointerEvents = "none";
-}
-
-function showSideWebviewEl(wv) {
-  wv.classList.add("active");
-  wv.style.visibility = "visible";
-  wv.style.pointerEvents = "auto";
-}
-
-function sidePartition(id) {
-  return "persist:slopbrowser-side-" + id;
-}
-
-function wireSideWebview(item, wv) {
-  wv.addEventListener("page-title-updated", (e) => {
-    if (activeSidePanelId === item.id) {
-      els.sidePanelTitle.textContent = e.title || item.label;
-    }
-  });
-
-  wv.addEventListener("page-favicon-updated", (e) => {
-    if (activeSidePanelId !== item.id) return;
-    const icon = pickFavicon(e.favicons);
-    if (icon) {
-      els.sidePanelIcon.innerHTML =
-        `<img src="${escapeHTML(icon)}" alt="">`;
-    }
-  });
-
-  wv.addEventListener("did-fail-load", (e) => {
-    if (!e.isMainFrame || e.errorCode === -3) return;
-    const html =
-      '<body style="margin:0;display:flex;align-items:center;justify-content:center;' +
-      'height:100vh;background:#0e0f13;color:#e6e8ef;font-family:Segoe UI,sans-serif">' +
-      '<div style="text-align:center;max-width:320px;padding:0 16px">' +
-      '<div style="font-size:32px;margin-bottom:10px">&#9888;</div>' +
-      `<h2 style="margin:0 0 8px;font-size:15px;font-weight:600">${escapeHTML(item.label)} could not load</h2>` +
-      '<p style="color:#8b90a3;font-size:12px;margin:0 0 12px">Check your connection and try again.</p>' +
-      `<p style="color:#8b90a3;font-size:11px;word-break:break-all;margin:0">${escapeHTML(e.validatedURL || item.url)}</p>` +
-      "</div></body>";
-    wv.executeJavaScript(
-      "document.documentElement.innerHTML = " + JSON.stringify(html)
-    ).catch(() => {});
-  });
-
-  const refit = () => scheduleSideWebviewSync(wv);
-  wv.addEventListener("dom-ready", refit);
-  wv.addEventListener("did-stop-loading", refit);
-  wv.addEventListener("did-navigate", refit);
-  wv.addEventListener("did-navigate-in-page", refit);
-}
-
-function getOrCreateSideWebview(item) {
-  let wv = sidePanelWebviews.get(item.id);
-  if (wv) return wv;
-
-  wv = document.createElement("webview");
-  wv.className = "side-panel-webview";
-  wv.dataset.sideId = item.id;
-  wv.setAttribute("partition", sidePartition(item.id));
-  wv.setAttribute("allowpopups", "");
-  wv.setAttribute("disableguestresize", "");
-  wv.setAttribute("useragent", CHROME_UA);
-  wv.setAttribute(
-    "webpreferences",
-    "contextIsolation=yes,javascript=yes,webgl=yes"
-  );
-  wv.src = item.url;
-  wireSideWebview(item, wv);
-  els.sidePanelViews.appendChild(wv);
-  sidePanelWebviews.set(item.id, wv);
-  return wv;
-}
-
-function showSideWebview(item) {
-  for (const [id, view] of sidePanelWebviews) {
-    if (id === item.id) showSideWebviewEl(view);
-    else hideSideWebview(view);
-  }
-  const wv = getOrCreateSideWebview(item);
-  showSideWebviewEl(wv);
-
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      try {
-        const url = wv.getURL();
-        if (!url || url === "about:blank") wv.src = item.url;
-      } catch (_) {
-        wv.src = item.url;
-      }
-      syncSideWebviewLayout(wv);
-    });
-  });
-  return wv;
 }
 
 function loadRailCollapsed() {
@@ -2583,6 +2162,7 @@ function setRailCollapsed(collapsed) {
       renderIcons(els.sideRailToggle);
     }
   }
+  queueMicrotask(() => scheduleContentBoundsSync());
 }
 
 const railEls = new Map();
@@ -2668,14 +2248,14 @@ function openSidePanel(itemId) {
   activeSidePanelId = itemId;
   els.sidePanel.classList.remove("hidden");
   setSidePanelHeader(item);
-  showSideWebview(item);
+  showSidePanelView(item);
   renderSideRail();
 }
 
 function closeSidePanel() {
   activeSidePanelId = null;
   els.sidePanel.classList.add("hidden");
-  for (const wv of sidePanelWebviews.values()) hideSideWebview(wv);
+  hideAllSidePanelViews();
   renderSideRail();
 }
 
@@ -2707,24 +2287,15 @@ els.sideRailToggle.onclick = () =>
 els.sidePanelClose.onclick = () => closeSidePanel();
 
 let sidePanelResizeActive = false;
-let slopAiResizeActive = false;
 let windowResizeTimer = null;
 
 setSidePanelWidth(getSidePanelWidth());
 
-if (els.sidePanelViews) {
-  new ResizeObserver(() => {
-    if (sidePanelResizeActive) return;
-    fitActiveSideWebview();
-  }).observe(els.sidePanelViews);
-}
-
 window.addEventListener("resize", () => {
-  if (sidePanelResizeActive || slopAiResizeActive) return;
+  if (sidePanelResizeActive) return;
   clearTimeout(windowResizeTimer);
   windowResizeTimer = setTimeout(() => {
     setSidePanelWidth(getSidePanelWidth());
-    setSlopAiPanelWidth(getSlopAiPanelWidth());
   }, 120);
 });
 
@@ -2796,175 +2367,48 @@ if (els.sidePanelResize) {
   els.sidePanelResize.addEventListener("pointerdown", beginSidePanelResize);
 }
 
-/* ---------- SlopAI panel (right sidebar) ---------- */
-const SLOPAI_PANEL_MIN_W = 300;
-const SLOPAI_PANEL_MAX_RATIO = 0.45;
-const SLOPAI_PANEL_DEFAULT_W = 380;
-let slopAiPanelOpen = false;
-
-function getSlopAiPanelWidth() {
-  try {
-    const w = parseInt(localStorage.getItem("slop-slopai-panel-width"), 10);
-    return Number.isFinite(w) ? w : SLOPAI_PANEL_DEFAULT_W;
-  } catch (_) {
-    return SLOPAI_PANEL_DEFAULT_W;
-  }
-}
-
-function clampSlopAiPanelWidth(px) {
-  const max = Math.max(SLOPAI_PANEL_MIN_W, Math.floor(window.innerWidth * SLOPAI_PANEL_MAX_RATIO));
-  return Math.max(SLOPAI_PANEL_MIN_W, Math.min(max, px));
-}
-
-function setSlopAiPanelWidth(px, opts = {}) {
-  const w = clampSlopAiPanelWidth(px);
-  document.documentElement.style.setProperty("--slopai-panel-width", w + "px");
-  if (!opts.skipPersist) {
-    try {
-      localStorage.setItem("slop-slopai-panel-width", String(w));
-    } catch (_) {}
-  }
-  return w;
-}
-
-function closeSlopAiPanel() {
-  if (!els.slopAiPanel) return;
-  if (slopAiResizeActive) endSlopAiPanelResize();
-  els.slopAiPanel.classList.add("hidden");
-  if (els.slopAiResizeShield) els.slopAiResizeShield.classList.add("hidden");
-  slopAiPanelOpen = false;
-  updateSlopAiChrome();
-  window.slopAPI.setWebviewsPointerPassthrough(false).catch(() => {});
-}
-
-function toggleSlopAiPanel(force) {
-  if (!els.slopAiPanel) return;
-  const show = force ?? els.slopAiPanel.classList.contains("hidden");
-  if (show) {
-    toggleMenu(false);
-    closeDownloadPanel();
-    toggleSlopPanel(false);
-    els.slopAiPanel.classList.remove("hidden");
-    slopAiPanelOpen = true;
-    updateSlopAiChrome();
-    focusSlopAiComposer();
-    return;
-  }
-  closeSlopAiPanel();
-}
-
-function endSlopAiPanelResize() {
-  if (!slopAiResizeActive) return;
-  slopAiResizeActive = false;
-  document.body.classList.remove("slopai-panel-resizing");
-  if (els.slopAiResizeShield) {
-    els.slopAiResizeShield.classList.add("hidden");
-  }
-  window.slopAPI.setWebviewsPointerPassthrough(false).catch(() => {});
-  setSlopAiPanelWidth(els.slopAiPanel.offsetWidth);
-}
-
-function beginSlopAiPanelResize(e) {
-  if (e.button !== 0 || slopAiResizeActive) return;
-  e.preventDefault();
-  e.stopPropagation();
-
-  slopAiResizeActive = true;
-  const pointerId = e.pointerId;
-  const startX = e.clientX;
-  const startW = els.slopAiPanel.offsetWidth;
-  const shield = els.slopAiResizeShield;
-
-  document.body.classList.add("slopai-panel-resizing");
-  if (shield) shield.classList.remove("hidden");
-  window.slopAPI.setWebviewsPointerPassthrough(true).catch(() => {});
-
-  const onMove = (ev) => {
-    if (!slopAiResizeActive || ev.pointerId !== pointerId) return;
-    setSlopAiPanelWidth(startW + (startX - ev.clientX), { skipPersist: true });
-  };
-
-  const onEnd = (ev) => {
-    if (ev.type === "pointerup" && ev.pointerId !== pointerId) return;
-    for (const el of [els.slopAiResize, shield]) {
-      if (!el) continue;
-      el.removeEventListener("pointermove", onMove);
-      el.removeEventListener("pointerup", onEnd);
-      el.removeEventListener("pointercancel", onEnd);
-      el.removeEventListener("lostpointercapture", onEnd);
-    }
-    window.removeEventListener("blur", onEnd);
-    try {
-      els.slopAiResize.releasePointerCapture(pointerId);
-    } catch (_) {}
-    endSlopAiPanelResize();
-  };
-
-  for (const el of [els.slopAiResize, shield]) {
-    if (!el) continue;
-    el.addEventListener("pointermove", onMove);
-    el.addEventListener("pointerup", onEnd);
-    el.addEventListener("pointercancel", onEnd);
-    el.addEventListener("lostpointercapture", onEnd);
-  }
-  window.addEventListener("blur", onEnd, { once: true });
-
-  try {
-    els.slopAiResize.setPointerCapture(pointerId);
-  } catch (_) {}
-}
-
-setSlopAiPanelWidth(getSlopAiPanelWidth());
-updateSlopAiComposerSend();
-els.slopAiCloseChat?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  closeSlopAiPanel();
-});
-
-els.slopAiRecentList?.addEventListener("mousedown", (e) => {
-  const delBtn = e.target.closest("[data-action='slopai-delete-chat']");
-  if (!delBtn) return;
-  e.preventDefault();
-  e.stopPropagation();
-  scheduleRemoveSlopAiChat(delBtn.dataset.id);
-});
-
-els.slopAiSummarize?.addEventListener("click", () => {
-  summarizeSlopAiPageContent();
-});
-
-els.slopAiComposer?.addEventListener("submit", (e) => {
-  e.preventDefault();
-  sendSlopAiMessage();
-});
-
-els.slopAiInput?.addEventListener("input", () => {
-  updateSlopAiComposerSend();
-  resizeSlopAiInput();
-});
-
-els.slopAiInput?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    sendSlopAiMessage();
-  }
-});
-
-if (els.slopAiResize) {
-  els.slopAiResize.addEventListener("pointerdown", beginSlopAiPanelResize);
-}
-
 setRailCollapsed(loadRailCollapsed());
 renderSideRail();
+
+window.slopAPI.menuOverlay.onAction((payload) => {
+  if (!payload?.action) return;
+  runMenuAction(payload.action, payload);
+});
+
+window.slopAPI.menuOverlay.onClosed(() => {
+  menuOverlayOpen = false;
+  els.menu?.classList.add("hidden");
+});
+
+window.slopAPI.slopPanelOverlay.onAction((payload) => {
+  if (!payload?.action) return;
+  runSlopPanelAction(payload.action);
+});
+
+window.slopAPI.slopPanelOverlay.onClosed(() => {
+  slopPanelOverlayOpen = false;
+  els.slopPanel?.classList.add("hidden");
+});
+
+window.slopAPI.downloadPanelOverlay.onAction((payload) => {
+  if (!payload?.action) return;
+  runDownloadPanelAction(payload.action, payload);
+});
+
+window.slopAPI.downloadPanelOverlay.onClosed(() => {
+  downloadPanelOpen = false;
+  els.downloadPanel?.classList.add("hidden");
+  updateDownloadChrome();
+});
 
 
 export function startChrome() {
   renderIcons();
+  scheduleContentBoundsSync();
   createTab(HOME);
   refreshBrowseHistory();
   refreshBookmarks();
   refreshDownloads();
-  loadSlopAiChats();
   window.slopAPI.onHistoryChanged(() => {
     refreshBrowseHistory();
     for (const tab of tabs) {
@@ -2995,20 +2439,16 @@ Object.assign(api, {
   reloadActiveTab,
   openHistoryPage,
   openDownloadsPage,
+  openCookiesPage,
   openRecentUrl,
   reopenClosedTab,
   toggleMenu,
   toggleSlopPanel,
-  toggleCookieManager,
-  openCookieManager,
   setRailCollapsed,
   renderSideRail,
   openSidePanel,
   closeSidePanel,
-  fitActiveSideWebview,
-  toggleSlopAiPanel,
-  closeSlopAiPanel,
-  openSlopAiChat,
+  fitActiveSidePanel,
   bookmarkThisTab,
   bookmarkAllTabs,
 });

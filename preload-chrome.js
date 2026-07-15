@@ -23,6 +23,17 @@ let historyChangedCb = null;
 let downloadChangedCb = null;
 let downloadStartedCb = null;
 let slopAiStreamCb = null;
+let tabEventCb = null;
+let sidePanelEventCb = null;
+let mainTabCreatedCb = null;
+let mainTabClosedCb = null;
+let mainTabActivatedCb = null;
+let menuActionCb = null;
+let menuClosedCb = null;
+let slopPanelActionCb = null;
+let slopPanelClosedCb = null;
+let downloadPanelActionCb = null;
+let downloadPanelClosedCb = null;
 ipcRenderer.on("slop:openURL", (_e, url) => openURLCb?.(url));
 ipcRenderer.on("slop:openSideURL", (_e, payload) => openSideURLCb?.(payload));
 ipcRenderer.on("slop:shortcut", (_e, key) => shortcutCb?.(key));
@@ -33,6 +44,19 @@ ipcRenderer.on("slop:historyChanged", () => historyChangedCb?.());
 ipcRenderer.on("slop:downloadChanged", () => downloadChangedCb?.());
 ipcRenderer.on("slop:downloadStarted", (_e, payload) => downloadStartedCb?.(payload));
 ipcRenderer.on("slopai:stream", (_e, payload) => slopAiStreamCb?.(payload));
+ipcRenderer.on("tab:event", (_e, payload) => tabEventCb?.(payload));
+ipcRenderer.on("sidePanel:event", (_e, payload) => sidePanelEventCb?.(payload));
+ipcRenderer.on("tabs:mainCreated", (_e, payload) => mainTabCreatedCb?.(payload));
+ipcRenderer.on("tabs:mainClosed", (_e, payload) => mainTabClosedCb?.(payload));
+ipcRenderer.on("tabs:mainActivated", (_e, payload) => mainTabActivatedCb?.(payload));
+ipcRenderer.on("menu:action", (_e, payload) => menuActionCb?.(payload));
+ipcRenderer.on("menu:closed", () => menuClosedCb?.());
+ipcRenderer.on("slopPanel:action", (_e, payload) => slopPanelActionCb?.(payload));
+ipcRenderer.on("slopPanel:closed", () => slopPanelClosedCb?.());
+ipcRenderer.on("downloadPanel:action", (_e, payload) =>
+  downloadPanelActionCb?.(payload)
+);
+ipcRenderer.on("downloadPanel:closed", () => downloadPanelClosedCb?.());
 
 const chromeUA = (() => {
   const v = process.versions.chrome || "131.0.0.0";
@@ -56,6 +80,9 @@ const historyURL = pathToFileURL(
 const downloadsURL = pathToFileURL(
   path.join(__dirname, "renderer", "downloads.html")
 ).href;
+const cookiesURL = pathToFileURL(
+  path.join(__dirname, "renderer", "cookies.html")
+).href;
 const settingsURL = pathToFileURL(
   path.join(__dirname, "renderer", "settings.html")
 ).href;
@@ -64,14 +91,12 @@ contextBridge.exposeInMainWorld("slopAPI", {
   newTabURL,
   historyURL,
   downloadsURL,
+  cookiesURL,
   settingsURL,
   buildId: buildInfo.buildId,
   version: buildInfo.version,
 
-  // Absolute path for tab webview cosmetic/scriptlet preload.
-  preloadWebviewPath: path.join(__dirname, "preload-webview.js"),
-
-  // Session partition for this window's webviews.
+  // Session partition for this window's tabs.
   partition: params.get("partition") || "persist:slopbrowser",
   isPrivate: params.get("private") === "1",
   chromeUserAgent: chromeUA,
@@ -115,14 +140,50 @@ contextBridge.exposeInMainWorld("slopAPI", {
       ipcRenderer.invoke("cookies:clearPartition", partition),
   },
 
-  setWebviewSize: (webContentsId, width, height) =>
-    ipcRenderer.invoke("webview:setSize", { webContentsId, width, height }),
-
-  setWebviewBackground: (webContentsId) =>
-    ipcRenderer.invoke("webview:setBackground", webContentsId),
-
   setWebviewsPointerPassthrough: (ignore) =>
     ipcRenderer.invoke("webview:setPointerPassthrough", !!ignore),
+
+  setContentViewsVisible: (visible) =>
+    ipcRenderer.invoke("content:setViewsVisible", !!visible),
+
+  menuOverlay: {
+    show: (anchor, data) =>
+      ipcRenderer.invoke("menuOverlay:show", { anchor, data }),
+    hide: () => ipcRenderer.invoke("menuOverlay:hide"),
+    isVisible: () => ipcRenderer.invoke("menuOverlay:isVisible"),
+    onAction: (cb) => {
+      menuActionCb = cb;
+    },
+    onClosed: (cb) => {
+      menuClosedCb = cb;
+    },
+  },
+
+  slopPanelOverlay: {
+    show: (anchor, data) =>
+      ipcRenderer.invoke("slopPanelOverlay:show", { anchor, data }),
+    hide: () => ipcRenderer.invoke("slopPanelOverlay:hide"),
+    isVisible: () => ipcRenderer.invoke("slopPanelOverlay:isVisible"),
+    onAction: (cb) => {
+      slopPanelActionCb = cb;
+    },
+    onClosed: (cb) => {
+      slopPanelClosedCb = cb;
+    },
+  },
+
+  downloadPanelOverlay: {
+    show: (anchor, data) =>
+      ipcRenderer.invoke("downloadPanelOverlay:show", { anchor, data }),
+    hide: () => ipcRenderer.invoke("downloadPanelOverlay:hide"),
+    isVisible: () => ipcRenderer.invoke("downloadPanelOverlay:isVisible"),
+    onAction: (cb) => {
+      downloadPanelActionCb = cb;
+    },
+    onClosed: (cb) => {
+      downloadPanelClosedCb = cb;
+    },
+  },
 
   adblock: {
     getState: () => ipcRenderer.invoke("adblock:getState"),
@@ -206,6 +267,66 @@ contextBridge.exposeInMainWorld("slopAPI", {
       };
       slopAiStreamCb = onEvent;
       return ipcRenderer.invoke("slopai:stream", { ...payload, requestId: activeId });
+    },
+  },
+
+  tabs: {
+    setBounds: (bounds) => ipcRenderer.invoke("tabs:setBounds", bounds),
+    create: (opts) => ipcRenderer.invoke("tabs:create", opts),
+    close: (tabId) => ipcRenderer.invoke("tabs:close", tabId),
+    setActive: (tabId) => ipcRenderer.invoke("tabs:setActive", tabId),
+    loadURL: (tabId, url) => ipcRenderer.invoke("tabs:loadURL", { tabId, url }),
+    goBack: (tabId) => ipcRenderer.invoke("tabs:goBack", tabId),
+    goForward: (tabId) => ipcRenderer.invoke("tabs:goForward", tabId),
+    reload: (tabId) => ipcRenderer.invoke("tabs:reload", tabId),
+    canGoBack: (tabId) => ipcRenderer.invoke("tabs:canGoBack", tabId),
+    canGoForward: (tabId) => ipcRenderer.invoke("tabs:canGoForward", tabId),
+    getURL: (tabId) => ipcRenderer.invoke("tabs:getURL", tabId),
+    setZoom: (tabId, factor) =>
+      ipcRenderer.invoke("tabs:setZoom", { tabId, factor }),
+    focus: (tabId) => ipcRenderer.invoke("tabs:focus", tabId),
+    executeJavaScript: (tabId, code) =>
+      ipcRenderer.invoke("tabs:executeJavaScript", { tabId, code }),
+    openDevTools: (tabId) => ipcRenderer.invoke("tabs:openDevTools", tabId),
+    onEvent: (cb) => {
+      tabEventCb = cb;
+    },
+    onMainCreated: (cb) => {
+      mainTabCreatedCb = cb;
+    },
+    onMainClosed: (cb) => {
+      mainTabClosedCb = cb;
+    },
+    onMainActivated: (cb) => {
+      mainTabActivatedCb = cb;
+    },
+  },
+
+  extensions: {
+    getDir: () => ipcRenderer.invoke("extensions:getDir"),
+    list: (partition) => ipcRenderer.invoke("extensions:list", partition),
+    load: (partition, extensionPath) =>
+      ipcRenderer.invoke("extensions:load", { partition, extensionPath }),
+    remove: (partition, extensionId) =>
+      ipcRenderer.invoke("extensions:remove", { partition, extensionId }),
+    installFromStore: (partition, extensionId) =>
+      ipcRenderer.invoke("extensions:installFromStore", { partition, extensionId }),
+    updateAll: (partition) => ipcRenderer.invoke("extensions:updateAll", partition),
+  },
+
+  sidePanel: {
+    setBounds: (bounds) => ipcRenderer.invoke("sidePanel:setBounds", bounds),
+    ensure: (opts) => ipcRenderer.invoke("sidePanel:ensure", opts),
+    setActive: (integrationId) =>
+      ipcRenderer.invoke("sidePanel:setActive", integrationId || null),
+    hideAll: () => ipcRenderer.invoke("sidePanel:hideAll"),
+    loadURL: (integrationId, url) =>
+      ipcRenderer.invoke("sidePanel:loadURL", { integrationId, url }),
+    getURL: (integrationId) => ipcRenderer.invoke("sidePanel:getURL", integrationId),
+    executeJavaScript: (integrationId, code) =>
+      ipcRenderer.invoke("sidePanel:executeJavaScript", { integrationId, code }),
+    onEvent: (cb) => {
+      sidePanelEventCb = cb;
     },
   },
 });

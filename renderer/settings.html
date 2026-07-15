@@ -297,12 +297,68 @@
       .pick-status.error {
         color: #f87171;
       }
+      .btn-inline {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--fg);
+        font: inherit;
+        font-size: 12px;
+        padding: 7px 12px;
+        cursor: pointer;
+      }
+      .btn-inline:hover {
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .btn-inline.danger {
+        border-color: rgba(248, 113, 113, 0.35);
+        color: #fca5a5;
+      }
+      .ext-list {
+        padding: 0;
+      }
+      .ext-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 18px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .ext-row:first-child {
+        border-top: none;
+      }
+      .ext-meta strong {
+        display: block;
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .ext-meta span {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+      .ext-actions {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .status-line {
+        padding: 0 18px 14px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .status-line.error {
+        color: #f87171;
+      }
     </style>
   </head>
   <body>
     <div id="layout">
       <nav id="sidebar" aria-label="Settings sections">
         <button type="button" class="nav-btn active" data-panel="general">General</button>
+        <button type="button" class="nav-btn" data-panel="extensions">Extensions</button>
         <button type="button" class="nav-btn" data-panel="agent">Agent</button>
       </nav>
 
@@ -336,6 +392,53 @@
                 <span>Internal build identifier</span>
               </div>
               <div class="row-value" id="buildValue">—</div>
+            </div>
+          </div>
+        </section>
+
+        <section id="panel-extensions" class="panel" aria-labelledby="extensions-title" hidden>
+          <h1 id="extensions-title">Extensions</h1>
+          <p class="lead">Install and manage Chrome extensions from the Web Store.</p>
+
+          <div class="section">
+            <div class="section-title">Install</div>
+            <div class="field">
+              <label class="field-label" for="extStoreId">Extension ID</label>
+              <span class="field-hint">
+                Paste an ID from the
+                <a href="https://chromewebstore.google.com/" style="color: var(--accent)">Chrome Web Store</a>
+                URL, or open the store from the menu.
+              </span>
+              <input
+                id="extStoreId"
+                class="field-input"
+                type="text"
+                placeholder="e.g. eimadpbcbfnmbkopoojfekhnkhdbieeh"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </div>
+            <div class="row">
+              <div class="row-label">
+                <strong>Install from ID</strong>
+                <span>Download and enable the extension in your profile</span>
+              </div>
+              <button type="button" class="btn-inline" id="extInstallBtn">Install</button>
+            </div>
+            <div class="row">
+              <div class="row-label">
+                <strong>Check for updates</strong>
+                <span>Update all Web Store extensions</span>
+              </div>
+              <button type="button" class="btn-inline" id="extUpdateBtn">Update</button>
+            </div>
+            <div class="status-line hidden" id="extStatus"></div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">Installed</div>
+            <div id="extList" class="ext-list">
+              <div class="placeholder-note">Loading extensions…</div>
             </div>
           </div>
         </section>
@@ -803,7 +906,139 @@
           panel.classList.toggle("active", active);
           panel.hidden = !active;
         });
+        if (id === "extensions") refreshExtensionsList();
       }
+
+      function setExtStatus(text, isError) {
+        const el = document.getElementById("extStatus");
+        if (!el) return;
+        if (!text) {
+          el.textContent = "";
+          el.classList.add("hidden");
+          el.classList.remove("error");
+          return;
+        }
+        el.textContent = text;
+        el.classList.remove("hidden");
+        el.classList.toggle("error", !!isError);
+      }
+
+      async function refreshExtensionsList() {
+        const list = document.getElementById("extList");
+        if (!list || !window.slopApp?.extensions?.list) {
+          if (list) {
+            list.innerHTML =
+              '<div class="placeholder-note">Extension API unavailable in this page.</div>';
+          }
+          return;
+        }
+        list.innerHTML = '<div class="placeholder-note">Loading extensions…</div>';
+        try {
+          const items = await window.slopApp.extensions.list();
+          if (!items.length) {
+            list.innerHTML =
+              '<div class="placeholder-note">No extensions installed yet. Open the Chrome Web Store from the menu or install by ID above.</div>';
+            return;
+          }
+          list.replaceChildren();
+          for (const ext of items) {
+            const row = document.createElement("div");
+            row.className = "ext-row";
+            const meta = document.createElement("div");
+            meta.className = "ext-meta";
+            const title = document.createElement("strong");
+            title.textContent = ext.name || ext.id;
+            const sub = document.createElement("span");
+            sub.textContent = [
+              ext.version ? `v${ext.version}` : "",
+              ext.fromWebStore ? "Chrome Web Store" : "Unpacked",
+              ext.description || ext.id,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            meta.appendChild(title);
+            meta.appendChild(sub);
+            const actions = document.createElement("div");
+            actions.className = "ext-actions";
+            const removeBtn = document.createElement("button");
+            removeBtn.type = "button";
+            removeBtn.className = "btn-inline danger";
+            removeBtn.textContent = "Remove";
+            removeBtn.addEventListener("click", async () => {
+              removeBtn.disabled = true;
+              setExtStatus("");
+              try {
+                await window.slopApp.extensions.remove(ext.id);
+                await refreshExtensionsList();
+                setExtStatus(`Removed ${ext.name || ext.id}.`);
+              } catch (err) {
+                setExtStatus(err?.message || "Remove failed.", true);
+              } finally {
+                removeBtn.disabled = false;
+              }
+            });
+            actions.appendChild(removeBtn);
+            row.appendChild(meta);
+            row.appendChild(actions);
+            list.appendChild(row);
+          }
+        } catch (err) {
+          list.innerHTML = `<div class="placeholder-note">${err?.message || "Could not load extensions."}</div>`;
+        }
+      }
+
+      async function installExtensionById() {
+        const input = document.getElementById("extStoreId");
+        const btn = document.getElementById("extInstallBtn");
+        const id = input?.value?.trim();
+        if (!id) {
+          setExtStatus("Enter an extension ID.", true);
+          return;
+        }
+        if (!window.slopApp?.extensions?.installFromStore) {
+          setExtStatus("Extension API unavailable.", true);
+          return;
+        }
+        btn.disabled = true;
+        setExtStatus("Downloading extension…");
+        try {
+          const res = await window.slopApp.extensions.installFromStore(id);
+          if (!res?.ok) throw new Error(res?.error || "Install failed");
+          setExtStatus(`Installed ${res.extension?.name || id}.`);
+          if (input) input.value = "";
+          await refreshExtensionsList();
+        } catch (err) {
+          setExtStatus(err?.message || "Install failed.", true);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      async function updateAllExtensions() {
+        const btn = document.getElementById("extUpdateBtn");
+        if (!window.slopApp?.extensions?.updateAll) {
+          setExtStatus("Extension API unavailable.", true);
+          return;
+        }
+        btn.disabled = true;
+        setExtStatus("Checking for updates…");
+        try {
+          const res = await window.slopApp.extensions.updateAll();
+          if (!res?.ok) throw new Error(res?.error || "Update check failed");
+          setExtStatus("Extensions are up to date.");
+          await refreshExtensionsList();
+        } catch (err) {
+          setExtStatus(err?.message || "Update failed.", true);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      document.getElementById("extInstallBtn")?.addEventListener("click", installExtensionById);
+      document.getElementById("extUpdateBtn")?.addEventListener("click", updateAllExtensions);
+      document.getElementById("extStoreId")?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") installExtensionById();
+      });
 
       document.querySelectorAll(".nav-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -811,6 +1046,11 @@
           if (btn.dataset.panel === "agent") loadAgentModels();
         });
       });
+
+      const hashPanel = location.hash.replace(/^#/, "");
+      if (hashPanel === "extensions" || hashPanel === "agent") {
+        setActivePanel(hashPanel);
+      }
 
       ["agentApiKey", "agentBaseUrl"].forEach((id) => {
         const el = document.getElementById(id);

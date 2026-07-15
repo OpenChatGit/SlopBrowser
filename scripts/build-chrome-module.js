@@ -79,8 +79,8 @@ body = body.replace(
 );
 body = stripMultilineConstFrom(
   body,
-  "^const sidePanelWebviews = new Map\\(\\);",
-  "^let sideFitTimer = null;\\n"
+  "^let activeSidePanelId = null;",
+  "^let zoomHideTimer = null;\\n"
 );
 
 body = body.replace(/\/\* ---------- Start ----------[\s\S]*$/m, "");
@@ -101,7 +101,7 @@ const HEADER_STATE = [
   "browseHistory",
   "savedBookmarks",
   "activeSidePanelId",
-  "sideFitTimer",
+  "boundsRaf",
   "zoomHideTimer",
 ];
 
@@ -131,12 +131,14 @@ import {
   HOME,
   HISTORY,
   DOWNLOADS,
+  COOKIES,
   SETTINGS,
   PARTITION,
   HOME_ADDRESS_PLACEHOLDER,
   DEFAULT_ADDRESS_PLACEHOLDER,
   HISTORY_DISPLAY,
   DOWNLOADS_DISPLAY,
+  COOKIES_DISPLAY,
   SETTINGS_DISPLAY,
   LOGO_SVG,
   GLOBE_SVG,
@@ -149,7 +151,6 @@ import {
   BROWSE_HISTORY_MAX,
   BOOKMARKS_MENU_MAX,
   DOWNLOADS_MENU_MAX,
-  SLOPAI_CHATS_MENU_MAX,
   DOWNLOAD_RING_R,
   DOWNLOAD_RING_C,
   SIDE_RAIL_ITEMS,
@@ -161,8 +162,6 @@ import {
   filterUI,
   tabAdCounts,
   tabEls,
-  sidePanelWebviews,
-  sideWebviewLayout,
   bookmarkUrls,
   sessionHistory,
   closedTabs,
@@ -172,6 +171,7 @@ import {
   isHome,
   isHistoryPage,
   isDownloadsPage,
+  isCookiesPage,
   isSettingsPage,
   displayURL,
   pickFavicon,
@@ -187,10 +187,6 @@ import {
   toURL,
 } from "../js/utils.js";
 
-import { renderMarkdown, enhanceMarkdown } from "../js/markdown.js";
-
-import { PAGE_CONTEXT_EXTRACTOR, buildSlopAiApiMessages } from "../js/page-context.js";
-
 import { api } from "../js/registry.js";
 
 let tabs = [];
@@ -200,7 +196,7 @@ let privateTabSeq = 0;
 let browseHistory = [];
 let savedBookmarks = [];
 let activeSidePanelId = null;
-let sideFitTimer = null;
+let boundsRaf = null;
 let zoomHideTimer = null;
 
 `;
@@ -208,11 +204,11 @@ let zoomHideTimer = null;
 const footer = `
 export function startChrome() {
   renderIcons();
+  scheduleContentBoundsSync();
   createTab(HOME);
   refreshBrowseHistory();
   refreshBookmarks();
   refreshDownloads();
-  loadSlopAiChats();
   window.slopAPI.onHistoryChanged(() => {
     refreshBrowseHistory();
     for (const tab of tabs) {
@@ -243,20 +239,16 @@ Object.assign(api, {
   reloadActiveTab,
   openHistoryPage,
   openDownloadsPage,
+  openCookiesPage,
   openRecentUrl,
   reopenClosedTab,
   toggleMenu,
   toggleSlopPanel,
-  toggleCookieManager,
-  openCookieManager,
   setRailCollapsed,
   renderSideRail,
   openSidePanel,
   closeSidePanel,
-  fitActiveSideWebview,
-  toggleSlopAiPanel,
-  closeSlopAiPanel,
-  openSlopAiChat,
+  fitActiveSidePanel,
   bookmarkThisTab,
   bookmarkAllTabs,
 });

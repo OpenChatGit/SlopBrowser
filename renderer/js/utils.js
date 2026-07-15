@@ -1,5 +1,15 @@
 /** URL, favicon, icon, and string helpers. */
-import { HOME, HISTORY, DOWNLOADS, SETTINGS, HISTORY_DISPLAY, DOWNLOADS_DISPLAY, SETTINGS_DISPLAY } from "./shared.js";
+import {
+  HOME,
+  HISTORY,
+  DOWNLOADS,
+  COOKIES,
+  SETTINGS,
+  HISTORY_DISPLAY,
+  DOWNLOADS_DISPLAY,
+  COOKIES_DISPLAY,
+  SETTINGS_DISPLAY,
+} from "./shared.js";
 
 export function isHome(url) {
   if (!url) return true;
@@ -32,6 +42,16 @@ export function isDownloadsPage(url) {
   }
 }
 
+export function isCookiesPage(url) {
+  if (!url) return false;
+  try {
+    return new URL(url).pathname === new URL(COOKIES).pathname;
+  } catch (_) {
+    const base = COOKIES.split("?")[0];
+    return url === COOKIES || url.startsWith(base);
+  }
+}
+
 export function isSettingsPage(url) {
   if (!url) return false;
   try {
@@ -45,6 +65,7 @@ export function isSettingsPage(url) {
 export function displayURL(url) {
   if (isHistoryPage(url)) return HISTORY_DISPLAY;
   if (isDownloadsPage(url)) return DOWNLOADS_DISPLAY;
+  if (isCookiesPage(url)) return COOKIES_DISPLAY;
   if (isSettingsPage(url)) return SETTINGS_DISPLAY;
   return url;
 }
@@ -152,6 +173,15 @@ export function toURL(input) {
   const low = raw.toLowerCase();
   if (low === "home" || low === "https://home" || low === "slop://home") {
     return HOME;
+  }
+  if (low === "cookies" || low === "slop://cookies") {
+    return COOKIES;
+  }
+  if (low === "history" || low === "slop://history") {
+    return HISTORY;
+  }
+  if (low === "downloads" || low === "slop://downloads") {
+    return DOWNLOADS;
   }
   if (/^[a-z]:[\\/]/i.test(raw) || raw.startsWith("\\\\")) {
     return "file:///" + raw.replace(/\\/g, "/");

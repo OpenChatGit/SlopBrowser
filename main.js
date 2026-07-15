@@ -3,6 +3,8 @@
  */
 const { app, BrowserWindow } = require("electron");
 const path = require("path");
+const fs = require("fs");
+const { pathToFileURL } = require("url");
 const { getBuildInfo } = require("./build-info");
 const { HistoryStore } = require("./stores/history-store");
 const { BookmarkStore } = require("./stores/bookmark-store");
@@ -12,8 +14,24 @@ const { createDownloadManager } = require("./main/download-manager");
 const { AdblockService } = require("./blocker/adblock-service");
 const { createWindow: createWindowFactory } = require("./main/window");
 const { configureIntegrationSessions } = require("./main/session-config");
-const { registerWebviewGuestHandlers } = require("./main/webview-guest");
 const { registerIpc } = require("./main/ipc");
+const { registerTabIpc } = require("./main/tab-manager");
+const { registerSidePanelIpc } = require("./main/side-panel-manager");
+const {
+  initExtensionService,
+  registerExtensionIpc,
+  registerTabWithExtensions,
+  unregisterTabWithExtensions,
+  selectTabWithExtensions,
+  ensureWebStore,
+  extensionsDir,
+} = require("./main/extension-service");
+const {
+  managerForWindow,
+  managerForWebContents,
+  tabIdForWebContents,
+} = require("./main/tab-manager");
+const { registerMenuOverlayIpc } = require("./main/menu-overlay");
 
 const isDev = process.argv.includes("--dev");
 const adblockService = new AdblockService();
@@ -26,7 +44,55 @@ const downloadManager = createDownloadManager(downloadStore, () =>
 );
 let cachedBuildInfo = null;
 
-const createWindow = createWindowFactory({ isDev });
+const homeURL = pathToFileURL(
+  path.join(__dirname, "renderer", "newtab.html")
+).href;
+
+const tabDeps = {
+  adblockService,
+  attachDownloadHandler: downloadManager.attachSessionDownloadHandler,
+  preloadPath: path.join(__dirname, "preload-webview.js"),
+  homeURL,
+  onTabRegistered(wc, win) {
+    registerTabWithExtensions(wc.session, wc, win);
+  },
+  onTabUnregistered(wc) {
+    unregisterTabWithExtensions(wc);
+  },
+  onTabSelected(wc) {
+    selectTabWithExtensions(wc);
+  },
+};
+
+const createWindow = createWindowFactory({ isDev, tabDeps });
+
+initExtensionService({
+  getHomeURL: () => homeURL,
+  partitionForWindow(win) {
+    return managerForWindow(win)?.partition || "persist:slopbrowser";
+  },
+  createTabInWindow(win, opts) {
+    const mgr = managerForWindow(win);
+    if (!mgr) return null;
+    return mgr.createTabFromMain(opts);
+  },
+  selectTabWebContents(wc, win) {
+    const mgr = managerForWebContents(wc) || managerForWindow(win);
+    const tabId = tabIdForWebContents(wc);
+    if (!mgr || tabId == null) return;
+    mgr.setActive(tabId, { skipExtensionSelect: true });
+    if (!mgr.chrome.isDestroyed()) {
+      mgr.chrome.send("tabs:mainActivated", { tabId });
+    }
+  },
+  closeTabWebContents(wc, win) {
+    const mgr = managerForWebContents(wc) || managerForWindow(win);
+    const tabId = tabIdForWebContents(wc);
+    if (!mgr || tabId == null) return;
+    mgr.closeTab(tabId);
+  },
+  createWindow: () => createWindow(),
+});
 
 if (!app.isPackaged) {
   try {
@@ -44,6 +110,11 @@ if (!app.isPackaged) {
   }
 }
 
+registerTabIpc(require("electron").ipcMain);
+registerSidePanelIpc(require("electron").ipcMain);
+registerExtensionIpc(require("electron").ipcMain);
+registerMenuOverlayIpc(require("electron").ipcMain);
+
 registerIpc({
   app,
   adblockService,
@@ -58,20 +129,23 @@ registerIpc({
   },
 });
 
-registerWebviewGuestHandlers(
-  app,
-  adblockService,
-  downloadManager.attachSessionDownloadHandler
-);
-
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   cachedBuildInfo = getBuildInfo(app);
   historyStore.init(app.getPath("userData"));
   bookmarkStore.init(app.getPath("userData"));
   downloadStore.init(app.getPath("userData"));
   agentSettingsStore.init(app.getPath("userData"));
   const { sesFromPartition } = require("./main/session-config");
-  adblockService.ensureSession(sesFromPartition("persist:slopbrowser"));
+  const mainSession = sesFromPartition("persist:slopbrowser");
+  adblockService.ensureSession(mainSession);
+  try {
+    fs.mkdirSync(extensionsDir(), { recursive: true });
+  } catch (_) {}
+  try {
+    await ensureWebStore(mainSession);
+  } catch (err) {
+    console.error("Extension / Web Store init failed:", err?.message || err);
+  }
   configureIntegrationSessions();
 
   createWindow();

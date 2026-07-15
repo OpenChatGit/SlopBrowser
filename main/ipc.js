@@ -4,7 +4,11 @@ const path = require("path");
 const { getBuildInfo } = require("../build-info");
 const { notifyHistoryChanged } = require("./notifications");
 const { sesFromPartition } = require("./session-config");
-const { hostWebviewIds } = require("./webview-guest");
+const {
+  managerForSender: tabManagerForSender,
+  isTabGuestWebContents,
+} = require("./tab-manager");
+const { managerForSender: sidePanelManagerForSender } = require("./side-panel-manager");
 
 function cookieRemoveUrl(cookie) {
   const proto = cookie.secure ? "https:" : "http:";
@@ -121,28 +125,17 @@ function registerIpc(deps) {
     return true;
   });
 
-  ipcMain.handle("webview:setSize", (_e, { webContentsId, width, height }) => {
-    const wc = webContents.fromId(webContentsId);
-    if (!wc || wc.isDestroyed()) return false;
-    const w = Math.round(Math.max(1, width));
-    const h = Math.round(Math.max(1, height));
-    wc.setSize({ normal: { width: w, height: h } });
+  ipcMain.handle("webview:setPointerPassthrough", (e, ignore) => {
+    const passthrough = !!ignore;
+    tabManagerForSender(e.sender)?.setPointerPassthrough(passthrough);
+    sidePanelManagerForSender(e.sender)?.setPointerPassthrough(passthrough);
     return true;
   });
 
-  ipcMain.handle("webview:setPointerPassthrough", (e, ignore) => {
-    const hostId = e.sender?.id;
-    if (!hostId) return false;
-    const passthrough = !!ignore;
-    const ids = hostWebviewIds.get(hostId);
-    if (!ids) return true;
-    for (const id of ids) {
-      const wc = webContents.fromId(id);
-      if (!wc || wc.isDestroyed()) continue;
-      try {
-        wc.setIgnoreMouseEvents(passthrough, { forward: passthrough });
-      } catch (_) {}
-    }
+  /** Hide tab/side WebContentsViews for rare full-window chrome overlays. */
+  ipcMain.handle("content:setViewsVisible", (e, visible) => {
+    tabManagerForSender(e.sender)?.setContentViewsVisible(!!visible);
+    sidePanelManagerForSender(e.sender)?.setContentViewsVisible(!!visible);
     return true;
   });
 
@@ -242,23 +235,13 @@ function registerIpc(deps) {
     }
   });
 
-  ipcMain.handle("webview:setBackground", (_e, webContentsId) => {
-    const wc = webContents.fromId(webContentsId);
-    if (!wc || wc.isDestroyed()) return false;
-    try {
-      wc.setBackgroundColor("#0e0f13");
-    } catch (_) {}
-    return true;
-  });
-
-  const { ZOOM_STEP } = require("./constants");
-  const { clampZoomFactor } = require("./webview-guest");
+  const { ZOOM_STEP, clampZoomFactor } = require("./constants");
   const { notifyZoomChanged } = require("./notifications");
 
   ipcMain.on("webview:zoomWheel", (e, payload) => {
     const contents = e.sender;
     if (!contents || contents.isDestroyed?.()) return;
-    if (contents.getType?.() !== "webview") return;
+    if (!isTabGuestWebContents(contents.id)) return;
 
     const deltaY = payload?.deltaY ?? 0;
     if (!deltaY) return;

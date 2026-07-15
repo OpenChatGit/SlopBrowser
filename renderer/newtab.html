@@ -125,6 +125,17 @@
         opacity: 0;
         visibility: hidden;
       }
+      .q-ghost-ch {
+        display: inline-block;
+      }
+      .q-ghost-ch.scramble {
+        color: #5c6378;
+        opacity: 0.82;
+      }
+      .q-ghost-ch.resolved {
+        color: var(--muted);
+        opacity: 1;
+      }
       @media (prefers-reduced-motion: reduce) {
         #qGhost {
           transition: none;
@@ -153,6 +164,10 @@
       .search-field.has-ghost #q {
         color: transparent;
         caret-color: transparent;
+      }
+      /* Autofocus keeps the field focused; still show decode ghost + caret. */
+      .search-field.has-ghost #q:focus {
+        caret-color: var(--fg);
       }
       #go {
         border: none;
@@ -642,23 +657,34 @@
         "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
 
       function qShowsGhost() {
-        return !q.value.trim() && document.activeElement !== q;
+        // Show decode ghost whenever empty — including while autofocused.
+        return !q.value.trim();
       }
 
       function qGhostRandomChar() {
         return Q_GHOST_CHARS[(Math.random() * Q_GHOST_CHARS.length) | 0];
       }
 
-      function qGhostScramble(text, ratio) {
+      function qGhostRender(text, ratio) {
+        if (!qGhost) return;
         const locked = Math.floor(text.length * ratio);
-        let out = "";
+        let html = "";
         for (let i = 0; i < text.length; i++) {
           const ch = text[i];
-          if (ch === " ") out += " ";
-          else if (i < locked) out += ch;
-          else out += qGhostRandomChar();
+          if (ch === " ") {
+            html += " ";
+            continue;
+          }
+          const resolved = i < locked;
+          const display = resolved ? ch : qGhostRandomChar();
+          html +=
+            '<span class="q-ghost-ch ' +
+            (resolved ? "resolved" : "scramble") +
+            '">' +
+            display +
+            "</span>";
         }
-        return out;
+        qGhost.innerHTML = html;
       }
 
       function sizeQGhostMinWidth() {
@@ -686,15 +712,13 @@
         return new Promise((resolve) => {
           const start = performance.now();
           const step = (now) => {
-            if (!qGhostLoop.running) {
+            if (!qGhostLoop.running || qGhostLoop.loopId !== qGhostLoop.activeLoopId) {
               resolve();
               return;
             }
             const t = Math.min(1, (now - start) / durationMs);
             const ratio = from + (to - from) * t;
-            if (qShowsGhost() && qGhost) {
-              qGhost.textContent = qGhostScramble(phrase, ratio);
-            }
+            if (qShowsGhost()) qGhostRender(phrase, ratio);
             if (t < 1) requestAnimationFrame(step);
             else resolve();
           };
@@ -706,21 +730,27 @@
         phraseIdx: 0,
         running: false,
         loopId: 0,
+        activeLoopId: 0,
 
         syncVisibility() {
           if (!qGhost) return;
           const show = qShowsGhost();
           qGhost.classList.toggle("hidden", !show);
           if (searchField) searchField.classList.toggle("has-ghost", show);
-          if (show) this.start();
+          if (show) this.ensureRunning();
           else this.stop();
         },
 
-        start() {
+        ensureRunning() {
           if (this.running) return;
           this.running = true;
           this.loopId++;
-          this.runLoop(this.loopId);
+          this.activeLoopId = this.loopId;
+          this.runLoop(this.activeLoopId);
+        },
+
+        start() {
+          this.ensureRunning();
         },
 
         stop() {
@@ -732,27 +762,30 @@
           const reducedMotion = window.matchMedia(
             "(prefers-reduced-motion: reduce)"
           ).matches;
+          const decodeMs = reducedMotion ? 420 : 820;
+          const encodeMs = reducedMotion ? 240 : 420;
+          const holdMs = reducedMotion ? 2200 : 3200;
 
-          while (this.running && id === this.loopId) {
-            const phrase = Q_GHOST_PHRASES[this.phraseIdx];
-            if (reducedMotion) {
-              if (qGhost && qShowsGhost()) qGhost.textContent = phrase;
-              await sleep(4000);
+          try {
+            while (this.running && id === this.loopId) {
+              const phrase = Q_GHOST_PHRASES[this.phraseIdx];
+
+              await animateQGhost(phrase, 0, 1, decodeMs);
+              if (!this.running || id !== this.loopId || !qShowsGhost()) break;
+
+              await sleep(holdMs);
+              if (!this.running || id !== this.loopId || !qShowsGhost()) break;
+
+              await animateQGhost(phrase, 1, 0, encodeMs);
               if (!this.running || id !== this.loopId) break;
+
               this.phraseIdx = (this.phraseIdx + 1) % Q_GHOST_PHRASES.length;
-              continue;
             }
-
-            await animateQGhost(phrase, 0, 1, 720);
-            if (!this.running || id !== this.loopId || !qShowsGhost()) break;
-
-            await sleep(3000);
-            if (!this.running || id !== this.loopId || !qShowsGhost()) break;
-
-            await animateQGhost(phrase, 1, 0, 380);
-            if (!this.running || id !== this.loopId) break;
-
-            this.phraseIdx = (this.phraseIdx + 1) % Q_GHOST_PHRASES.length;
+          } finally {
+            if (id === this.loopId) {
+              this.running = false;
+              if (qShowsGhost()) this.ensureRunning();
+            }
           }
         },
       };
@@ -763,6 +796,27 @@
       });
       q.addEventListener("focus", () => qGhostLoop.syncVisibility());
       q.addEventListener("blur", () => qGhostLoop.syncVisibility());
+
+      function focusHomeSearchInput() {
+        if (!q) return;
+        requestAnimationFrame(() => {
+          if (document.activeElement !== q) {
+            try {
+              q.focus({ preventScroll: true });
+            } catch (_) {
+              q.focus();
+            }
+          }
+          qGhostLoop.syncVisibility();
+        });
+      }
+
+      window.__slopFocusHomeSearch = focusHomeSearchInput;
+      window.addEventListener("focus", focusHomeSearchInput);
+      window.addEventListener("pageshow", focusHomeSearchInput);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) focusHomeSearchInput();
+      });
 
       function toURL(input) {
         const raw = input.trim();
@@ -781,9 +835,9 @@
         if (url) window.location.href = url;
       });
 
-      window.addEventListener("focus", () => q.focus());
       sizeQGhostMinWidth();
       qGhostLoop.syncVisibility();
+      focusHomeSearchInput();
 
       function applyFooterBuildInfo(info) {
         const build = document.getElementById("homeBuild");

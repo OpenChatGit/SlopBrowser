@@ -2,10 +2,12 @@
 export const HOME = window.slopAPI.newTabURL;
 export const HISTORY = window.slopAPI.historyURL;
 export const DOWNLOADS = window.slopAPI.downloadsURL;
+export const COOKIES = window.slopAPI.cookiesURL;
 export const SETTINGS = window.slopAPI.settingsURL;
 export const PARTITION = window.slopAPI.partition;
 export const HISTORY_DISPLAY = "slop://history";
 export const DOWNLOADS_DISPLAY = "slop://downloads";
+export const COOKIES_DISPLAY = "slop://cookies";
 export const SETTINGS_DISPLAY = "slop://settings";
 export const HOME_ADDRESS_PLACEHOLDER = "Search the web";
 export const DEFAULT_ADDRESS_PLACEHOLDER = "Search or enter address";
@@ -33,7 +35,6 @@ export const HISTORY_RECENT_MAX = 6;
 export const BROWSE_HISTORY_MAX = 2000;
 export const BOOKMARKS_MENU_MAX = 12;
 export const DOWNLOADS_MENU_MAX = 6;
-export const SLOPAI_CHATS_MENU_MAX = 6;
 export const DOWNLOAD_RING_R = 15;
 export const DOWNLOAD_RING_C = 2 * Math.PI * DOWNLOAD_RING_R;
 
@@ -81,19 +82,7 @@ export const els = {
   downloadPanelList: document.getElementById("downloadPanelList"),
   downloadsSubWrap: document.getElementById("downloadsSubWrap"),
   downloadsRecentList: document.getElementById("downloadsRecentList"),
-  slopAiSubWrap: document.getElementById("slopAiSubWrap"),
-  slopAiRecentList: document.getElementById("slopAiRecentList"),
   menuCluster: document.getElementById("menuCluster"),
-  slopAiCloseChat: document.getElementById("slopAiCloseChat"),
-  cookieOverlay: document.getElementById("cookieOverlay"),
-  cookiePanel: document.getElementById("cookiePanel"),
-  cookieClose: document.getElementById("cookieClose"),
-  cookieScope: document.getElementById("cookieScope"),
-  cookieSiteOnly: document.getElementById("cookieSiteOnly"),
-  cookieClearSite: document.getElementById("cookieClearSite"),
-  cookieClearAll: document.getElementById("cookieClearAll"),
-  cookieList: document.getElementById("cookieList"),
-  cookieEmpty: document.getElementById("cookieEmpty"),
   sideRail: document.getElementById("sideRail"),
   sideRailItems: document.getElementById("sideRailItems"),
   sideRailToggle: document.getElementById("sideRailToggle"),
@@ -104,20 +93,6 @@ export const els = {
   sidePanelTitle: document.querySelector(".side-panel-title"),
   sidePanelIcon: document.querySelector(".side-panel-icon"),
   sidePanelClose: document.querySelector(".side-panel-close"),
-  slopAiPanel: document.getElementById("slopAiPanel"),
-  slopAiBody: document.getElementById("slopAiBody"),
-  slopAiContextWrap: document.getElementById("slopAiContextWrap"),
-  slopAiContextIcon: document.getElementById("slopAiContextIcon"),
-  slopAiContextLabel: document.getElementById("slopAiContextLabel"),
-  slopAiSummarizeWrap: document.getElementById("slopAiSummarizeWrap"),
-  slopAiSummarize: document.getElementById("slopAiSummarize"),
-  slopAiSummarizeIcon: document.getElementById("slopAiSummarizeIcon"),
-  slopAiComposer: document.getElementById("slopAiComposer"),
-  slopAiInput: document.getElementById("slopAiInput"),
-  slopAiAppend: document.getElementById("slopAiAppend"),
-  slopAiSend: document.getElementById("slopAiSend"),
-  slopAiResize: document.getElementById("slopAiResize"),
-  slopAiResizeShield: document.getElementById("slopAiResizeShield"),
   min: document.getElementById("min"),
   max: document.getElementById("max"),
   close: document.getElementById("close"),
@@ -132,8 +107,6 @@ export const filterUI = {
 
 export const tabAdCounts = new Map();
 export const tabEls = new Map();
-export const sidePanelWebviews = new Map();
-export const sideWebviewLayout = new WeakMap();
 export const bookmarkUrls = new Set();
 export const sessionHistory = [];
 export const closedTabs = [];

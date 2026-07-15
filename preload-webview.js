@@ -58,23 +58,58 @@ try {
       removeMany: (ids) => ipcRenderer.invoke("downloads:removeMany", ids),
       clear: () => ipcRenderer.invoke("downloads:clear"),
     },
+    cookies: {
+      getAll: (partition) => ipcRenderer.invoke("cookies:getAll", partition),
+      getForUrl: (partition, url) =>
+        ipcRenderer.invoke("cookies:getForUrl", { partition, url }),
+      remove: (partition, cookie) =>
+        ipcRenderer.invoke("cookies:remove", { partition, cookie }),
+      clear: (partition, url) =>
+        ipcRenderer.invoke("cookies:clear", { partition, url: url || null }),
+      clearPartition: (partition) =>
+        ipcRenderer.invoke("cookies:clearPartition", partition),
+    },
     agentSettings: {
       get: () => ipcRenderer.invoke("agentSettings:get"),
       set: (data) => ipcRenderer.invoke("agentSettings:set", data),
       listModels: (opts) => ipcRenderer.invoke("agentSettings:listModels", opts || {}),
+    },
+    extensions: {
+      partition: "persist:slopbrowser",
+      list: (partition) =>
+        ipcRenderer.invoke("extensions:list", partition || "persist:slopbrowser"),
+      installFromStore: (extensionId, partition) =>
+        ipcRenderer.invoke("extensions:installFromStore", {
+          partition: partition || "persist:slopbrowser",
+          extensionId,
+        }),
+      remove: (extensionId, partition) =>
+        ipcRenderer.invoke("extensions:remove", {
+          partition: partition || "persist:slopbrowser",
+          extensionId,
+        }),
+      updateAll: (partition) =>
+        ipcRenderer.invoke("extensions:updateAll", partition || "persist:slopbrowser"),
+      getDir: () => ipcRenderer.invoke("extensions:getDir"),
     },
   });
 
   // Fallback for file:// pages when direct IPC from the guest is unavailable.
   contextBridge.exposeInMainWorld("slopHistoryBridge", {
     send(op, data) {
-      ipcRenderer.sendToHost("slop:history", { op, data: data ?? null });
+      ipcRenderer.send("tab:guestMessage", {
+        channel: "slop:history",
+        payload: { op, data: data ?? null },
+      });
     },
   });
 
   contextBridge.exposeInMainWorld("slopDownloadsBridge", {
     send(op, data) {
-      ipcRenderer.sendToHost("slop:downloads", { op, data: data ?? null });
+      ipcRenderer.send("tab:guestMessage", {
+        channel: "slop:downloads",
+        payload: { op, data: data ?? null },
+      });
     },
   });
 } catch (_) {}
@@ -82,8 +117,8 @@ try {
 const STYLE_ID = "slop-cosmetic-css";
 const DARK_BASE_ID = "slop-dark-base";
 const SCROLLBAR_STYLE_ID = "slop-scrollbar-css";
-const HREF_POLL_MS = 800;
-const MUTATION_THROTTLE_MS = 250;
+const HREF_POLL_MS = 400;
+const MUTATION_THROTTLE_MS = 50;
 
 let ytPatchCode = null;
 
@@ -220,6 +255,10 @@ function bootstrapEarlyBlockers(force = false) {
   if (!href || href === "about:blank" || !/^https?:/i.test(href)) return false;
 
   if (!force && bootstrapRes && bootstrapHref === href) return true;
+  if (window.__slopCosmeticsEarly && bootstrapRes && bootstrapHref === href) {
+    active = true;
+    return true;
+  }
 
   let enabled = true;
   try {
@@ -235,12 +274,18 @@ function bootstrapEarlyBlockers(force = false) {
     }
 
     if (res?.injected_script) {
-      const wrapped = `(function(){if(window.__slopCosmeticsBoot)return;window.__slopCosmeticsBoot=true;\n${res.injected_script}\n})();`;
-      injectPageScript(wrapped);
+      if (!window.__slopScriptletsEarly) {
+        const wrapped = `(function(){if(window.__slopCosmeticsBoot)return;window.__slopCosmeticsBoot=true;\n${res.injected_script}\n})();`;
+        injectPageScript(wrapped);
+      }
       lastScriptletKey = "len:" + res.injected_script.length;
     }
     if (res?.hide_selectors?.length) {
-      injectHideSelectorsEarly(res.hide_selectors);
+      if (!document.getElementById(STYLE_ID)?.textContent) {
+        injectHideSelectorsEarly(res.hide_selectors);
+      } else {
+        for (const sel of res.hide_selectors) hiddenSelectors.add(sel);
+      }
     }
     if (res) {
       active = true;
@@ -611,7 +656,7 @@ async function applyCosmetics() {
    * SPA route change with identical scriptlets must not re-run them (double
    * JSON.parse wraps, stacked handlers, …). */
   const scriptKey = "len:" + (res.injected_script?.length || 0);
-  if (res.injected_script && scriptKey !== lastScriptletKey) {
+  if (res.injected_script && scriptKey !== lastScriptletKey && !window.__slopScriptletsEarly) {
     lastScriptletKey = scriptKey;
     injectScriptlet(res.injected_script);
   }
@@ -703,7 +748,9 @@ function boot() {
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", boot, { once: true });
   document.addEventListener("DOMContentLoaded", applyScrollbarStyle, { once: true });
+  if (/^https?:/i.test(location.href)) bootstrapEarlyBlockers(true);
 } else {
   boot();
 }
 applyScrollbarStyle();
+if (/^https?:/i.test(location.href)) bootstrapEarlyBlockers(true);

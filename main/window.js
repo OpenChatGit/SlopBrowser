@@ -1,9 +1,12 @@
 const path = require("path");
 const { BrowserWindow } = require("electron");
+const { initWindowTabs } = require("./tab-manager");
+const { initWindowSidePanels } = require("./side-panel-manager");
+const { initMenuOverlay } = require("./menu-overlay");
 
 let privateSeq = 0;
 
-function createWindow({ isDev = false } = {}) {
+function createWindow({ isDev = false, tabDeps = null } = {}) {
   return function create(opts = {}) {
     const isPrivate = !!opts.private;
     const partition = isPrivate
@@ -23,7 +26,6 @@ function createWindow({ isDev = false } = {}) {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
-        webviewTag: true,
       },
     });
 
@@ -45,6 +47,12 @@ function createWindow({ isDev = false } = {}) {
 
     if (isDev) {
       win.webContents.openDevTools({ mode: "detach" });
+    }
+
+    if (tabDeps) {
+      initWindowTabs(win, { ...tabDeps, partition });
+      initWindowSidePanels(win);
+      initMenuOverlay(win);
     }
 
     return win;

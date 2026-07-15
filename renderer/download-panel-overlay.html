@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; script-src 'self';"
+    />
+    <title>Downloads</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="download-panel-overlay.css" />
+  </head>
+  <body class="download-panel-overlay-root">
+    <div id="downloadPanelBackdrop" aria-hidden="true"></div>
+    <div id="downloadPanel" class="download-panel" role="menu">
+      <div class="download-panel-header">
+        <span class="download-panel-title">Downloads</span>
+        <button
+          type="button"
+          id="downloadPanelClearAll"
+          class="download-panel-clear"
+          data-action="downloads-clear-all"
+          disabled
+        >
+          Clear all
+        </button>
+      </div>
+      <div id="downloadPanelList" class="download-panel-list"></div>
+    </div>
+    <script src="download-panel-overlay.js"></script>
+  </body>
+</html>

@@ -108,10 +108,12 @@ SlopBrowser/
 ├── main.js                 # App bootstrap
 ├── main/                   # Main-process modules
 │   ├── window.js           # BrowserWindow factory
+│   ├── tab-manager.js      # WebContentsView tabs (navigation, bounds, zoom)
+│   ├── side-panel-manager.js # Side rail integrations (WebContentsView)
+│   ├── extension-service.js  # Chrome extensions + Web Store integration
 │   ├── ipc.js              # IPC handlers (history, bookmarks, cookies, adblock)
-│   ├── webview-guest.js    # Webview lifecycle, zoom, shortcuts
 │   ├── session-config.js   # Partitions, user-agent, integrations
-│   └── notifications.js    # History/zoom change broadcasts
+│   └── notifications.js    # History/download change broadcasts
 ├── stores/
 │   ├── history-store.js    # Persistent browse history (JSON)
 │   └── bookmark-store.js   # Persistent bookmarks (JSON)
@@ -136,9 +138,9 @@ SlopBrowser/
 | Layer | Role |
 |-------|------|
 | `main.js` + `main/*` | Windows, sessions, IPC, adblock network layer |
-| `preload-chrome.js` | `window.slopAPI` for tabs, history, bookmarks, cookies |
-| `preload-webview.js` | Ad cosmetics, scriptlets, `slopApp` / history bridge on pages |
-| `renderer/renderer.js` | Tabs, toolbar, menus, side rail, webview wiring |
+| `preload-chrome.js` | `window.slopAPI` for tabs, side panel, history, bookmarks, extensions |
+| `preload-webview.js` | Ad cosmetics, scriptlets, `slopApp` / history bridge on tab pages |
+| `renderer/renderer.js` | Tabs, toolbar, menus, side rail, WebContentsView bounds sync |
 | `stores/*` | Durable history and bookmarks on disk |
 | `blocker/adblock-service.js` | Brave lists, request blocking, cosmetic payloads |
 | `blocker/slop-engine.js` | Slop heuristics (dev/tests only — not used in tabs) |
@@ -157,4 +159,6 @@ real on/off switch are planned for when slop blocking ships.
 
 ## License
 
-MIT — see [package.json](package.json).
+SlopBrowser is licensed under **GPL-3.0-or-later** — see [LICENSE](LICENSE).
+
+This project uses [electron-chrome-extensions](https://www.npmjs.com/package/electron-chrome-extensions) (GPL-3.0), which requires a GPL-compatible license for distribution.

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; script-src 'self';"
+    />
+    <title>Menu</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="menu-overlay.css" />
+  </head>
+  <body class="menu-overlay-root">
+    <div id="menuBackdrop" aria-hidden="true"></div>
+    <div id="menu" role="menu">
+      <button class="menu-item" data-action="newtab" role="menuitem">
+        <i data-lucide="plus"></i><span>New tab</span><kbd>Ctrl+T</kbd>
+      </button>
+      <button class="menu-item" data-action="newwindow" role="menuitem">
+        <i data-lucide="app-window"></i><span>New window</span><kbd>Ctrl+N</kbd>
+      </button>
+      <button class="menu-item" data-action="newprivate" role="menuitem">
+        <i data-lucide="venetian-mask"></i><span>New Private Tab</span>
+        <kbd>Ctrl+Shift+P</kbd>
+      </button>
+      <div class="menu-sep"></div>
+      <div class="menu-sub-wrap" id="historySubWrap">
+        <button
+          type="button"
+          class="menu-item menu-sub"
+          data-action="history"
+          role="menuitem"
+          aria-haspopup="true"
+        >
+          <i data-lucide="history"></i><span>History</span>
+          <i data-lucide="chevron-left" class="menu-chevron"></i>
+        </button>
+        <div id="historySubmenu" class="menu-submenu" role="menu">
+          <button
+            type="button"
+            class="menu-item"
+            data-action="history-open"
+            role="menuitem"
+          >
+            <i data-lucide="history"></i><span>Open history page</span
+            ><kbd>Ctrl+H</kbd>
+          </button>
+          <div class="menu-sep"></div>
+          <div class="menu-submenu-label">Recent history</div>
+          <div id="historyRecentList" class="menu-submenu-list"></div>
+        </div>
+      </div>
+      <div class="menu-sub-wrap" id="bookmarksSubWrap">
+        <button
+          type="button"
+          class="menu-item menu-sub"
+          data-action="bookmarks"
+          role="menuitem"
+          aria-haspopup="true"
+        >
+          <i data-lucide="book-marked"></i><span>Bookmarks and lists</span>
+          <i data-lucide="chevron-left" class="menu-chevron"></i>
+        </button>
+        <div id="bookmarksSubmenu" class="menu-submenu" role="menu">
+          <button
+            type="button"
+            class="menu-item"
+            id="bookmarksThisTab"
+            data-action="bookmarks-this-tab"
+            role="menuitem"
+          >
+            <i data-lucide="bookmark-plus"></i><span>Bookmark this tab</span>
+          </button>
+          <button
+            type="button"
+            class="menu-item"
+            id="bookmarksAllTabs"
+            data-action="bookmarks-all-tabs"
+            role="menuitem"
+          >
+            <i data-lucide="book-copy"></i><span>Bookmark all tabs</span>
+          </button>
+          <div class="menu-sep"></div>
+          <div class="menu-submenu-label">Bookmarks</div>
+          <div id="bookmarksSavedList" class="menu-submenu-list"></div>
+        </div>
+      </div>
+      <div class="menu-sub-wrap" id="downloadsSubWrap">
+        <button
+          type="button"
+          class="menu-item menu-sub"
+          data-action="downloads"
+          role="menuitem"
+          aria-haspopup="true"
+        >
+          <i data-lucide="download"></i><span>Downloads</span>
+          <i data-lucide="chevron-left" class="menu-chevron"></i>
+        </button>
+        <div id="downloadsSubmenu" class="menu-submenu" role="menu">
+          <button
+            type="button"
+            class="menu-item"
+            data-action="downloads-open-page"
+            role="menuitem"
+          >
+            <i data-lucide="download"></i><span>Open downloads page</span
+            ><kbd>Ctrl+J</kbd>
+          </button>
+          <div class="menu-sep"></div>
+          <div class="menu-submenu-label">Recent downloads</div>
+          <div id="downloadsRecentList" class="menu-submenu-list"></div>
+        </div>
+      </div>
+      <div class="menu-sep"></div>
+      <button class="menu-item" data-action="reload" role="menuitem">
+        <i data-lucide="rotate-cw"></i><span>Reload</span><kbd>Ctrl+R</kbd>
+      </button>
+      <div class="menu-sep"></div>
+      <button class="menu-item" data-action="togglesidebar" role="menuitem">
+        <i data-lucide="panel-left"></i><span>Toggle sidebar</span>
+      </button>
+      <button class="menu-item" data-action="cookies" role="menuitem">
+        <i data-lucide="cookie"></i><span>Cookies</span>
+      </button>
+      <button class="menu-item" data-action="devtools" role="menuitem">
+        <i data-lucide="code"></i><span>DevTools</span>
+      </button>
+      <button class="menu-item" data-action="extensions" role="menuitem">
+        <i data-lucide="puzzle"></i><span>Extensions</span>
+      </button>
+      <div class="menu-sep"></div>
+      <button class="menu-item" data-action="settings" role="menuitem">
+        <i data-lucide="settings"></i><span>Settings</span>
+      </button>
+    </div>
+    <script src="lib/lucide.js"></script>
+    <script src="menu-overlay.js"></script>
+  </body>
+</html>
