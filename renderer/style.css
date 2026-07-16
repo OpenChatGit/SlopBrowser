@@ -108,6 +108,75 @@ body {
   color: #fff;
 }
 
+/* Session restore notice styles (used by session-restore overlay) */
+.session-restore-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 28px));
+  padding: 10px 10px 10px 12px;
+  color: var(--fg);
+  background: rgba(22, 22, 26, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.session-restore-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.session-restore-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.session-restore-copy span {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.session-restore-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.session-restore-btn {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg);
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.session-restore-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.session-restore-btn.primary {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #000000;
+}
+
+.session-restore-btn.primary:hover {
+  filter: brightness(0.94);
+}
+
 /* Maximize/restore: only one icon visible at a time. */
 #max .ico-restore {
   display: none !important;

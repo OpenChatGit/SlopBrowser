@@ -99,28 +99,109 @@ async function consumeSSE(res, onJson) {
   }
 }
 
-function parseOpenAIChunk(json) {
-  const err = json?.error?.message || (typeof json?.error === "string" ? json.error : null);
-  if (err) throw new Error(err);
-  const delta = json?.choices?.[0]?.delta?.content;
-  return typeof delta === "string" ? delta : "";
+function flattenReasoningDetails(details) {
+  if (!Array.isArray(details)) return "";
+  let out = "";
+  for (const item of details) {
+    if (!item) continue;
+    if (typeof item === "string") {
+      out += item;
+      continue;
+    }
+    if (typeof item.text === "string") out += item.text;
+    else if (typeof item.summary === "string") out += item.summary;
+    else if (typeof item.content === "string") out += item.content;
+    else if (Array.isArray(item.content)) {
+      for (const part of item.content) {
+        if (typeof part === "string") out += part;
+        else if (typeof part?.text === "string") out += part.text;
+      }
+    }
+  }
+  return out;
 }
 
-function parseAnthropicChunk(json) {
+function extractOpenAIPieces(json) {
+  const err =
+    json?.error?.message ||
+    (typeof json?.error === "string" ? json.error : null);
+  if (err) throw new Error(err);
+
+  const delta = json?.choices?.[0]?.delta || {};
+  const message = json?.choices?.[0]?.message || {};
+
+  let content = "";
+  if (typeof delta.content === "string") content = delta.content;
+  else if (typeof message.content === "string" && !delta.content) {
+    // Non-standard single-shot payloads.
+  }
+
+  let reasoning = "";
+  if (typeof delta.reasoning === "string") reasoning += delta.reasoning;
+  if (typeof delta.reasoning_content === "string") {
+    reasoning += delta.reasoning_content;
+  }
+  if (typeof message.reasoning === "string") reasoning += message.reasoning;
+  if (typeof message.reasoning_content === "string") {
+    reasoning += message.reasoning_content;
+  }
+  reasoning += flattenReasoningDetails(delta.reasoning_details);
+  reasoning += flattenReasoningDetails(message.reasoning_details);
+
+  return { content, reasoning };
+}
+
+function extractAnthropicPieces(json) {
   if (json?.type === "error") {
     throw new Error(json?.error?.message || json?.message || "Anthropic stream error");
   }
-  if (json?.type === "content_block_delta") {
-    return json?.delta?.text || "";
+
+  if (json?.type === "content_block_start") {
+    // Track block type via caller if needed; start events have no text.
+    return { content: "", reasoning: "", blockType: json?.content_block?.type || "" };
   }
-  return "";
+
+  if (json?.type === "content_block_delta") {
+    const d = json?.delta || {};
+    if (d.type === "thinking_delta" || typeof d.thinking === "string") {
+      return { content: "", reasoning: d.thinking || "" };
+    }
+    if (d.type === "text_delta" || typeof d.text === "string") {
+      return { content: d.text || "", reasoning: "" };
+    }
+  }
+
+  return { content: "", reasoning: "" };
 }
 
-function parseGoogleChunk(json) {
+function extractGooglePieces(json) {
   const err = json?.error?.message;
   if (err) throw new Error(err);
   const parts = json?.candidates?.[0]?.content?.parts || [];
-  return parts.map((p) => p.text || "").join("");
+  let content = "";
+  let reasoning = "";
+  for (const part of parts) {
+    const text = typeof part?.text === "string" ? part.text : "";
+    if (!text) continue;
+    if (part.thought || part.thoughtSignature) reasoning += text;
+    else content += text;
+  }
+  return { content, reasoning };
+}
+
+function emitPiece(onDelta, kind, text) {
+  if (!text) return;
+  if (typeof onDelta !== "function") return;
+  onDelta({ kind, text });
+}
+
+function finishStream(content, reasoning) {
+  const text = String(content || "").trim();
+  if (!text) throw new Error("Empty response from model");
+  return {
+    text,
+    reasoning: String(reasoning || "").trim(),
+  };
 }
 
 async function streamOpenAICompatible({
@@ -131,6 +212,7 @@ async function streamOpenAICompatible({
   extraHeaders = {},
   maxTokens = 4096,
   onDelta,
+  includeReasoning = false,
 }) {
   const headers = {
     "Content-Type": "application/json",
@@ -139,29 +221,40 @@ async function streamOpenAICompatible({
   };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
+  const body = {
+    model,
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    max_tokens: maxTokens,
+    stream: true,
+  };
+  if (includeReasoning) {
+    // OpenRouter / some OpenAI-compatible hosts.
+    body.reasoning = { enabled: true };
+  }
+
   const res = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      model,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
-      max_tokens: maxTokens,
-      stream: true,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) throw new Error(await readError(res));
 
-  let full = "";
+  let content = "";
+  let reasoning = "";
   await consumeSSE(res, (json) => {
-    const delta = parseOpenAIChunk(json);
-    if (!delta) return;
-    full += delta;
-    onDelta?.(delta);
+    const pieces = extractOpenAIPieces(json);
+    if (pieces.reasoning) {
+      reasoning += pieces.reasoning;
+      emitPiece(onDelta, "reasoning", pieces.reasoning);
+    }
+    if (pieces.content) {
+      content += pieces.content;
+      emitPiece(onDelta, "content", pieces.content);
+    }
   });
 
-  if (!full.trim()) throw new Error("Empty response from model");
-  return full.trim();
+  return finishStream(content, reasoning);
 }
 
 async function streamAnthropic({ apiKey, model, messages, onDelta }) {
@@ -194,16 +287,21 @@ async function streamAnthropic({ apiKey, model, messages, onDelta }) {
 
   if (!res.ok) throw new Error(await readError(res));
 
-  let full = "";
+  let content = "";
+  let reasoning = "";
   await consumeSSE(res, (json) => {
-    const delta = parseAnthropicChunk(json);
-    if (!delta) return;
-    full += delta;
-    onDelta?.(delta);
+    const pieces = extractAnthropicPieces(json);
+    if (pieces.reasoning) {
+      reasoning += pieces.reasoning;
+      emitPiece(onDelta, "reasoning", pieces.reasoning);
+    }
+    if (pieces.content) {
+      content += pieces.content;
+      emitPiece(onDelta, "content", pieces.content);
+    }
   });
 
-  if (!full.trim()) throw new Error("Empty response from model");
-  return full.trim();
+  return finishStream(content, reasoning);
 }
 
 async function streamGoogle({ apiKey, model, messages, onDelta }) {
@@ -235,16 +333,43 @@ async function streamGoogle({ apiKey, model, messages, onDelta }) {
 
   if (!res.ok) throw new Error(await readError(res));
 
-  let full = "";
+  let content = "";
+  let reasoning = "";
   await consumeSSE(res, (json) => {
-    const delta = parseGoogleChunk(json);
-    if (!delta) return;
-    full += delta;
-    onDelta?.(delta);
+    const pieces = extractGooglePieces(json);
+    if (pieces.reasoning) {
+      reasoning += pieces.reasoning;
+      emitPiece(onDelta, "reasoning", pieces.reasoning);
+    }
+    if (pieces.content) {
+      content += pieces.content;
+      emitPiece(onDelta, "content", pieces.content);
+    }
   });
 
-  if (!full.trim()) throw new Error("Empty response from model");
-  return full.trim();
+  return finishStream(content, reasoning);
+}
+
+function extractOpenRouterDeltaPieces(chunk) {
+  const delta = chunk?.choices?.[0]?.delta || {};
+  const message = chunk?.choices?.[0]?.message || {};
+
+  let content = "";
+  if (typeof delta.content === "string") content = delta.content;
+
+  let reasoning = "";
+  if (typeof delta.reasoning === "string") reasoning += delta.reasoning;
+  if (typeof delta.reasoning_content === "string") {
+    reasoning += delta.reasoning_content;
+  }
+  if (typeof message.reasoning === "string") reasoning += message.reasoning;
+  if (typeof message.reasoning_content === "string") {
+    reasoning += message.reasoning_content;
+  }
+  reasoning += flattenReasoningDetails(delta.reasoning_details);
+  reasoning += flattenReasoningDetails(message.reasoning_details);
+
+  return { content, reasoning };
 }
 
 async function streamOpenRouter({ apiKey, model, messages, maxTokens = 1024, onDelta }) {
@@ -255,27 +380,41 @@ async function streamOpenRouter({ apiKey, model, messages, maxTokens = 1024, onD
     appTitle: "SlopBrowser",
   });
 
-  const stream = await openRouter.chat.send({
-    chatRequest: {
-      model,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
-      stream: true,
-      maxTokens,
-    },
-  });
+      const streamOpts = {
+        model,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        stream: true,
+        maxTokens,
+      };
 
-  let full = "";
-  for await (const chunk of stream) {
-    const content = chunk?.choices?.[0]?.delta?.content;
-    if (typeof content === "string" && content) {
-      full += content;
-      onDelta?.(content);
+      let stream;
+      try {
+        stream = await openRouter.chat.send({
+          chatRequest: {
+            ...streamOpts,
+            reasoning: { exclude: false },
+          },
+        });
+      } catch (_) {
+        stream = await openRouter.chat.send({ chatRequest: streamOpts });
+      }
+
+      let content = "";
+      let reasoning = "";
+      for await (const chunk of stream) {
+        const pieces = extractOpenRouterDeltaPieces(chunk);
+        if (pieces.reasoning) {
+          reasoning += pieces.reasoning;
+          emitPiece(onDelta, "reasoning", pieces.reasoning);
+        }
+        if (pieces.content) {
+          content += pieces.content;
+          emitPiece(onDelta, "content", pieces.content);
+        }
+      }
+
+      return finishStream(content, reasoning);
     }
-  }
-
-  if (!full.trim()) throw new Error("Empty response from model");
-  return full.trim();
-}
 
 async function streamChat({ provider, apiKey, baseUrl, model, messages, onDelta }) {
   const p = String(provider || "openai");
@@ -319,6 +458,7 @@ async function streamChat({ provider, apiKey, baseUrl, model, messages, onDelta 
     extraHeaders: {},
     maxTokens: 4096,
     onDelta,
+    includeReasoning: false,
   });
 }
 

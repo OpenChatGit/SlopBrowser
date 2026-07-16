@@ -23,6 +23,16 @@ const OVERLAY_SPECS = {
     preload: "preload-download-panel-overlay.js",
     initChannel: "downloadPanelOverlay:init",
   },
+  sessionRestore: {
+    width: 360,
+    height: 96,
+    html: "session-restore-overlay.html",
+    preload: "preload-session-restore-overlay.js",
+    initChannel: "sessionRestoreOverlay:init",
+    layout: "topRight",
+    padX: 14,
+    padY: 46,
+  },
 };
 
 /** @type {Map<number, WindowOverlayManager>} chrome webContents id */
@@ -36,6 +46,10 @@ class OverlayInstance {
     this.view = null;
     this.visible = false;
     this.bounds = null;
+    this.lastAnchor = null;
+    this.lastPadY = null;
+    this.contentWidth = null;
+    this.contentHeight = null;
   }
 
   destroyView() {
@@ -79,6 +93,28 @@ class OverlayInstance {
 
   computeBounds(anchor) {
     const [winW, winH] = this.win.getContentSize();
+
+    if (this.spec.layout === "topRight") {
+      const padX = this.spec.padX ?? 14;
+      const padY =
+        this.lastPadY != null
+          ? this.lastPadY
+          : (this.spec.padY ?? 46);
+      const wantW = this.contentWidth || this.spec.width;
+      const wantH = this.contentHeight || this.spec.height;
+      const width = Math.min(wantW, Math.max(0, winW - padX * 2));
+      const height = Math.min(wantH, Math.max(0, winH - padY));
+      return {
+        bounds: {
+          x: Math.max(0, winW - width - padX),
+          y: padY,
+          width,
+          height,
+        },
+        panelAnchor: { right: width, top: 0 },
+      };
+    }
+
     const right = Math.round(anchor.x + anchor.width);
     const below = Math.round(anchor.y + anchor.height);
 
@@ -103,8 +139,36 @@ class OverlayInstance {
     return { bounds, panelAnchor };
   }
 
+  applyContentSize(size) {
+    if (!this.visible) return false;
+    const width = Math.ceil(Number(size?.width) || 0);
+    const height = Math.ceil(Number(size?.height) || 0);
+    if (width < 1 || height < 1) return false;
+    this.contentWidth = width;
+    this.contentHeight = height;
+    this.reposition();
+    return true;
+  }
+
+  reposition() {
+    if (!this.visible || !this.view) return;
+    if (this.spec.layout === "topRight") {
+      const { bounds } = this.computeBounds({});
+      this.bounds = bounds;
+    } else if (this.lastAnchor) {
+      const { bounds } = this.computeBounds(this.lastAnchor);
+      this.bounds = bounds;
+    }
+    if (!this.bounds) return;
+    try {
+      this.view.setBounds(this.bounds);
+    } catch (_) {}
+  }
+
   raise() {
-    if (!this.visible || !this.view || !this.bounds) return;
+    if (!this.visible || !this.view) return;
+    this.reposition();
+    if (!this.bounds) return;
     try {
       this.win.contentView.removeChildView(this.view);
       this.win.contentView.addChildView(this.view);
@@ -113,10 +177,17 @@ class OverlayInstance {
   }
 
   show(anchor, data) {
-    if (!anchor || this.win.isDestroyed()) return false;
+    if (this.win.isDestroyed()) return false;
+    if (!anchor && this.spec.layout !== "topRight") return false;
 
     const view = this.ensureView();
-    const { bounds, panelAnchor } = this.computeBounds(anchor);
+    this.lastAnchor = anchor || {};
+    if (data && data.padY != null) {
+      this.lastPadY = Math.round(Number(data.padY) || 0);
+    } else if (this.spec.layout === "topRight" && this.lastPadY == null) {
+      this.lastPadY = this.spec.padY ?? 46;
+    }
+    const { bounds, panelAnchor } = this.computeBounds(this.lastAnchor);
     this.bounds = bounds;
     this.visible = true;
 
@@ -151,6 +222,10 @@ class OverlayInstance {
   hide() {
     this.visible = false;
     this.bounds = null;
+    this.lastAnchor = null;
+    this.lastPadY = null;
+    this.contentWidth = null;
+    this.contentHeight = null;
     if (!this.view) return false;
     try {
       this.win.contentView.removeChildView(this.view);
@@ -171,6 +246,14 @@ class WindowOverlayManager {
     }
 
     managersByChrome.set(this.chrome.id, this);
+
+    const onWindowGeometry = () => this.repositionAllVisible();
+    win.on("resize", onWindowGeometry);
+    win.on("maximize", onWindowGeometry);
+    win.on("unmaximize", onWindowGeometry);
+    win.on("enter-full-screen", onWindowGeometry);
+    win.on("leave-full-screen", onWindowGeometry);
+
     win.on("closed", () => {
       managersByChrome.delete(this.chrome.id);
       for (const overlay of this.overlays.values()) {
@@ -196,9 +279,19 @@ class WindowOverlayManager {
     return this.overlay(type)?.visible ?? false;
   }
 
+  applyContentSize(type, size) {
+    return this.overlay(type)?.applyContentSize(size) ?? false;
+  }
+
   raiseAllVisible() {
     for (const overlay of this.overlays.values()) {
       if (overlay.visible) overlay.raise();
+    }
+  }
+
+  repositionAllVisible() {
+    for (const overlay of this.overlays.values()) {
+      if (overlay.visible) overlay.reposition();
     }
   }
 }
@@ -292,6 +385,23 @@ function registerMenuOverlayIpc(ipcMain) {
     closed: "downloadPanelOverlay:closed",
     chromeAction: "downloadPanel:action",
     chromeClosed: "downloadPanel:closed",
+  });
+
+  registerOverlayIpc(ipcMain, "sessionRestore", {
+    show: "sessionRestoreOverlay:show",
+    hide: "sessionRestoreOverlay:hide",
+    isVisible: "sessionRestoreOverlay:isVisible",
+    action: "sessionRestoreOverlay:action",
+    closed: "sessionRestoreOverlay:closed",
+    chromeAction: "sessionRestore:action",
+    chromeClosed: "sessionRestore:closed",
+  });
+
+  ipcMain.on("sessionRestoreOverlay:resize", (e, size) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const mgr = win ? managerForWindow(win) : null;
+    if (!mgr) return;
+    mgr.applyContentSize("sessionRestore", size || {});
   });
 }
 

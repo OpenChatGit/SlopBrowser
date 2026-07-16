@@ -30,6 +30,9 @@ try {
   ipcRenderer.on("slop:historyChanged", () => historyChangedCb?.());
   ipcRenderer.on("slop:downloadChanged", () => downloadChangedCb?.());
 
+  let slopAiStreamCb = null;
+  ipcRenderer.on("slopai:stream", (_e, payload) => slopAiStreamCb?.(payload));
+
   contextBridge.exposeInMainWorld("slopApp", {
     version: buildInfo.version || pkg.version,
     buildId: buildInfo.buildId || "",
@@ -74,6 +77,39 @@ try {
       set: (data) => ipcRenderer.invoke("agentSettings:set", data),
       listModels: (opts) => ipcRenderer.invoke("agentSettings:listModels", opts || {}),
     },
+    slopAi: {
+      stream: (payload, handlers = {}) => {
+        const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const activeId = requestId;
+        const onEvent = (msg) => {
+          if (!msg || msg.requestId !== activeId) return;
+          if (msg.type === "chunk" && msg.delta) {
+            const kind = msg.kind === "reasoning" ? "reasoning" : "content";
+            handlers.onChunk?.(msg.delta, { kind });
+            if (kind === "reasoning") handlers.onReasoning?.(msg.delta);
+            else handlers.onContent?.(msg.delta);
+          }
+          if (msg.type === "done") {
+            cleanup();
+            handlers.onDone?.(msg.text || "", {
+              reasoning: msg.reasoning || "",
+            });
+          }
+          if (msg.type === "error") {
+            cleanup();
+            handlers.onError?.(msg.error || "Request failed");
+          }
+        };
+        const cleanup = () => {
+          if (slopAiStreamCb === onEvent) slopAiStreamCb = null;
+        };
+        slopAiStreamCb = onEvent;
+        return ipcRenderer.invoke("slopai:stream", {
+          ...payload,
+          requestId: activeId,
+        });
+      },
+    },
     extensions: {
       partition: "persist:slopbrowser",
       list: (partition) =>
@@ -108,6 +144,15 @@ try {
     send(op, data) {
       ipcRenderer.send("tab:guestMessage", {
         channel: "slop:downloads",
+        payload: { op, data: data ?? null },
+      });
+    },
+  });
+
+  contextBridge.exposeInMainWorld("slopChatBridge", {
+    send(op, data) {
+      ipcRenderer.send("tab:guestMessage", {
+        channel: "slop:chat",
         payload: { op, data: data ?? null },
       });
     },

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';"
+    />
+    <title>Restore session</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="session-restore-overlay.css" />
+  </head>
+  <body class="session-restore-overlay-root">
+    <div
+      id="sessionRestoreNotice"
+      class="session-restore-notice visible"
+      role="alertdialog"
+      aria-labelledby="sessionRestoreTitle"
+      aria-describedby="sessionRestoreDesc"
+    >
+      <div class="session-restore-copy">
+        <strong id="sessionRestoreTitle">Restore previous session?</strong>
+        <span id="sessionRestoreDesc"
+          >Your last tabs and chats are still available.</span
+        >
+      </div>
+      <div class="session-restore-actions">
+        <button type="button" id="sessionRestoreNo" class="session-restore-btn">
+          No
+        </button>
+        <button
+          type="button"
+          id="sessionRestoreYes"
+          class="session-restore-btn primary"
+        >
+          Yes
+        </button>
+      </div>
+    </div>
+    <script src="session-restore-overlay.js"></script>
+  </body>
+</html>

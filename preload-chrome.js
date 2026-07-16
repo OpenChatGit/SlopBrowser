@@ -34,6 +34,8 @@ let slopPanelActionCb = null;
 let slopPanelClosedCb = null;
 let downloadPanelActionCb = null;
 let downloadPanelClosedCb = null;
+let sessionRestoreActionCb = null;
+let sessionRestoreClosedCb = null;
 ipcRenderer.on("slop:openURL", (_e, url) => openURLCb?.(url));
 ipcRenderer.on("slop:openSideURL", (_e, payload) => openSideURLCb?.(payload));
 ipcRenderer.on("slop:shortcut", (_e, key) => shortcutCb?.(key));
@@ -57,6 +59,10 @@ ipcRenderer.on("downloadPanel:action", (_e, payload) =>
   downloadPanelActionCb?.(payload)
 );
 ipcRenderer.on("downloadPanel:closed", () => downloadPanelClosedCb?.());
+ipcRenderer.on("sessionRestore:action", (_e, payload) =>
+  sessionRestoreActionCb?.(payload)
+);
+ipcRenderer.on("sessionRestore:closed", () => sessionRestoreClosedCb?.());
 
 const chromeUA = (() => {
   const v = process.versions.chrome || "131.0.0.0";
@@ -185,6 +191,19 @@ contextBridge.exposeInMainWorld("slopAPI", {
     },
   },
 
+  sessionRestoreOverlay: {
+    show: (anchor, data) =>
+      ipcRenderer.invoke("sessionRestoreOverlay:show", { anchor, data }),
+    hide: () => ipcRenderer.invoke("sessionRestoreOverlay:hide"),
+    isVisible: () => ipcRenderer.invoke("sessionRestoreOverlay:isVisible"),
+    onAction: (cb) => {
+      sessionRestoreActionCb = cb;
+    },
+    onClosed: (cb) => {
+      sessionRestoreClosedCb = cb;
+    },
+  },
+
   adblock: {
     getState: () => ipcRenderer.invoke("adblock:getState"),
     setEnabled: (enabled) => ipcRenderer.invoke("adblock:setEnabled", !!enabled),
@@ -246,16 +265,29 @@ contextBridge.exposeInMainWorld("slopAPI", {
     listModels: (opts) => ipcRenderer.invoke("agentSettings:listModels", opts || {}),
   },
 
+  session: {
+    get: () => ipcRenderer.invoke("session:get"),
+    set: (state) => ipcRenderer.invoke("session:set", state),
+    clear: () => ipcRenderer.invoke("session:clear"),
+  },
+
   slopAi: {
     stream: (payload, handlers = {}) => {
       const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const activeId = requestId;
       const onEvent = (msg) => {
         if (!msg || msg.requestId !== activeId) return;
-        if (msg.type === "chunk" && msg.delta) handlers.onChunk?.(msg.delta);
+        if (msg.type === "chunk" && msg.delta) {
+          const kind = msg.kind === "reasoning" ? "reasoning" : "content";
+          handlers.onChunk?.(msg.delta, { kind });
+          if (kind === "reasoning") handlers.onReasoning?.(msg.delta);
+          else handlers.onContent?.(msg.delta);
+        }
         if (msg.type === "done") {
           cleanup();
-          handlers.onDone?.(msg.text || "");
+          handlers.onDone?.(msg.text || "", {
+            reasoning: msg.reasoning || "",
+          });
         }
         if (msg.type === "error") {
           cleanup();

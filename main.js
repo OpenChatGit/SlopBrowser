@@ -10,6 +10,7 @@ const { HistoryStore } = require("./stores/history-store");
 const { BookmarkStore } = require("./stores/bookmark-store");
 const { DownloadStore } = require("./stores/download-store");
 const { AgentSettingsStore } = require("./stores/agent-settings-store");
+const { SessionStore } = require("./stores/session-store");
 const { createDownloadManager } = require("./main/download-manager");
 const { AdblockService } = require("./blocker/adblock-service");
 const { createWindow: createWindowFactory } = require("./main/window");
@@ -39,6 +40,7 @@ const historyStore = new HistoryStore();
 const bookmarkStore = new BookmarkStore();
 const downloadStore = new DownloadStore();
 const agentSettingsStore = new AgentSettingsStore();
+const sessionStore = new SessionStore();
 const downloadManager = createDownloadManager(downloadStore, () =>
   app.getPath("downloads")
 );
@@ -122,6 +124,7 @@ registerIpc({
   bookmarkStore,
   downloadManager,
   agentSettingsStore,
+  sessionStore,
   createWindow,
   getCachedBuildInfo: () => cachedBuildInfo,
   setCachedBuildInfo: (info) => {
@@ -135,6 +138,7 @@ app.whenReady().then(async () => {
   bookmarkStore.init(app.getPath("userData"));
   downloadStore.init(app.getPath("userData"));
   agentSettingsStore.init(app.getPath("userData"));
+  sessionStore.init(app.getPath("userData"));
   const { sesFromPartition } = require("./main/session-config");
   const mainSession = sesFromPartition("persist:slopbrowser");
   adblockService.ensureSession(mainSession);

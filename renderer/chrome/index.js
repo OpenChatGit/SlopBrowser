@@ -104,6 +104,297 @@ function focusActiveHomeSearch(delayMs = 0) {
   focusHomeSearch(activeTab(), delayMs);
 }
 
+let chatModePendingTabId = null;
+let sessionRestoring = false;
+let sessionSaveTimer = null;
+let pendingRestoreState = null;
+
+function scheduleSaveSession() {
+  if (sessionRestoring) return;
+  clearTimeout(sessionSaveTimer);
+  sessionSaveTimer = setTimeout(() => {
+    saveSession().catch(() => {});
+  }, 250);
+}
+
+function normalizeTabChatMessages(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const m of list.slice(-80)) {
+    if (!m || (m.role !== "user" && m.role !== "assistant")) continue;
+    const text = String(m.text || "").slice(0, 12000);
+    if (!text.trim()) continue;
+    const entry = { role: m.role, text };
+    const reasoning = String(m.reasoning || "").slice(0, 12000);
+    if (reasoning.trim()) entry.reasoning = reasoning;
+    const reasoningMs = Number(m.reasoningMs);
+    if (Number.isFinite(reasoningMs) && reasoningMs >= 0) {
+      entry.reasoningMs = Math.round(reasoningMs);
+    }
+    out.push(entry);
+  }
+  return out;
+}
+
+function buildSessionState() {
+  const persistable = tabs.filter((t) => t && !t.private && t.url);
+  const activeIndex = Math.max(
+    0,
+    persistable.findIndex((t) => t.id === activeId)
+  );
+  return {
+    tabs: persistable.map((t) => ({
+      url: t.url,
+      title: t.title || "",
+      favicon: t.favicon || "",
+      chatMode: !!t.chatMode,
+      chatTitle: t.chatTitle || null,
+      chatMessages: normalizeTabChatMessages(t.chatMessages),
+    })),
+    activeIndex: persistable.length
+      ? Math.min(activeIndex, persistable.length - 1)
+      : 0,
+  };
+}
+
+function sessionWorthRestoring(state) {
+  const list = Array.isArray(state?.tabs) ? state.tabs : [];
+  if (!list.length) return false;
+  if (list.length > 1) return true;
+  const t = list[0];
+  if (!t?.url) return false;
+  if (!isHome(t.url)) return true;
+  if (t.chatMode || t.chatTitle) return true;
+  if (Array.isArray(t.chatMessages) && t.chatMessages.length) return true;
+  return false;
+}
+
+async function saveSession() {
+  if (sessionRestoring) return;
+  // Keep the recoverable session on disk until the user answers Yes/No.
+  if (pendingRestoreState) return;
+  if (!window.slopAPI?.session?.set) return;
+  try {
+    await window.slopAPI.session.set(buildSessionState());
+  } catch (_) {}
+}
+
+async function clearSavedSession() {
+  pendingRestoreState = null;
+  try {
+    await window.slopAPI.session.clear?.();
+  } catch (_) {
+    try {
+      await window.slopAPI.session.set({ tabs: [], activeIndex: 0 });
+    } catch (_) {}
+  }
+}
+
+function sessionRestorePadY() {
+  const toolbar = document.getElementById("toolbar");
+  const bottom = toolbar?.getBoundingClientRect?.()?.bottom;
+  return Math.round((Number.isFinite(bottom) ? bottom : 90) + 8);
+}
+
+function hideSessionRestoreNotice() {
+  window.slopAPI?.sessionRestoreOverlay?.hide?.().catch(() => {});
+}
+
+function showSessionRestoreNotice() {
+  const api = window.slopAPI?.sessionRestoreOverlay;
+  if (!api?.show) return;
+  api.show(null, { padY: sessionRestorePadY() }).catch(() => {});
+}
+
+function refreshSessionRestoreNoticePosition() {
+  if (!pendingRestoreState) return;
+  showSessionRestoreNotice();
+}
+
+async function applyRestoredSession(state) {
+  const saved = Array.isArray(state?.tabs)
+    ? state.tabs.filter((t) => t && typeof t.url === "string" && t.url.trim())
+    : [];
+  if (!saved.length) {
+    if (!tabs.length) await createTab(HOME, { activate: true });
+    return;
+  }
+
+  sessionRestoring = true;
+  try {
+    const existing = tabs.slice();
+    for (const tab of existing) {
+      const idx = tabs.findIndex((t) => t.id === tab.id);
+      if (idx === -1) continue;
+      tabs.splice(idx, 1);
+      window.slopAPI.tabs.close(tab.id).catch(() => {});
+      tabAdCounts.delete(tab.id);
+    }
+    activeId = null;
+    renderTabs();
+
+    const activateIndex = Math.max(
+      0,
+      Math.min(Number(state.activeIndex) || 0, saved.length - 1)
+    );
+    for (const entry of saved) {
+      await createTab(entry.url, {
+        activate: false,
+        title: entry.title || undefined,
+        favicon: entry.favicon || null,
+        chatMode: !!entry.chatMode,
+        chatTitle: entry.chatTitle || null,
+        chatMessages: normalizeTabChatMessages(entry.chatMessages),
+      });
+    }
+    const target = tabs[activateIndex] || tabs[0];
+    if (target) setActive(target.id);
+  } finally {
+    sessionRestoring = false;
+    pendingRestoreState = null;
+    scheduleSaveSession();
+  }
+}
+
+async function acceptSessionRestore() {
+  hideSessionRestoreNotice();
+  const state = pendingRestoreState;
+  pendingRestoreState = null;
+  if (!state) return;
+  await applyRestoredSession(state);
+}
+
+async function declineSessionRestore() {
+  hideSessionRestoreNotice();
+  await clearSavedSession();
+  scheduleSaveSession();
+}
+
+async function bootSession() {
+  let state = null;
+  try {
+    state = await window.slopAPI.session.get();
+  } catch (_) {
+    state = null;
+  }
+
+  await createTab(HOME, { activate: true });
+
+  if (sessionWorthRestoring(state)) {
+    pendingRestoreState = state;
+    showSessionRestoreNotice();
+  } else {
+    pendingRestoreState = null;
+  }
+}
+
+function syncChatModeOnTab(tab, opts = {}) {
+  if (!tab || !isHome(tab.url)) return;
+  const payload = {
+    active: !!tab.chatMode,
+    instant: !!opts.instant,
+    messages: normalizeTabChatMessages(tab.chatMessages),
+    title: tab.chatTitle || null,
+  };
+  window.slopAPI.tabs
+    .executeJavaScript(
+      tab.id,
+      `window.__slopRestoreChat&&window.__slopRestoreChat(${JSON.stringify(
+        payload
+      )})`
+    )
+    .catch(() => {});
+}
+
+function syncChromeChatModeClass() {
+  const t = activeTab();
+  document.body.classList.toggle("chat-mode", !!(t && t.chatMode));
+}
+
+function homeTabTitle(tab) {
+  if (!tab) return "Home";
+  if (tab.chatTitle) return tab.chatTitle;
+  if (tab.chatMode) return "New Conversation";
+  return "Home";
+}
+
+function applyChatTabTitle(tab) {
+  if (!tab) return;
+  const next = homeTabTitle(tab);
+  if (tab.title === next) {
+    updateTabPresentation(tab);
+    return;
+  }
+  tab.title = next;
+  updateTabPresentation(tab);
+  scheduleSaveSession();
+}
+
+async function setChatMode(active) {
+  const t = activeTab();
+  if (!t) return;
+  const next = !!active;
+
+  if (next && !isHome(t.url)) {
+    t.chatMode = true;
+    if (!t.chatTitle) t.title = "New Conversation";
+    chatModePendingTabId = t.id;
+    syncChromeChatModeClass();
+    updateTabPresentation(t);
+    scheduleSaveSession();
+    Promise.resolve(window.slopAPI.tabs.loadURL(t.id, HOME)).catch(() => {});
+    return;
+  }
+
+  t.chatMode = next;
+  if (!next) {
+    chatModePendingTabId = null;
+    if (!t.chatTitle) t.title = "Home";
+  } else if (!t.chatTitle) {
+    t.title = "New Conversation";
+  }
+  syncChromeChatModeClass();
+  applyChatTabTitle(t);
+  syncChatModeOnTab(t);
+  scheduleSaveSession();
+}
+
+function toggleChatMode() {
+  const t = activeTab();
+  if (!t) return;
+  setChatMode(!t.chatMode);
+}
+
+function handleChatGuestMessage(tab, payload) {
+  if (!payload || !payload.op) return;
+
+  if (payload.op === "sync-messages") {
+    tab.chatMode = true;
+    tab.chatMessages = normalizeTabChatMessages(payload.data?.messages);
+    if (!tab.chatTitle && tab.chatMessages[0]?.role === "user") {
+      const first = tab.chatMessages[0].text.replace(/\s+/g, " ").trim();
+      if (first) {
+        tab.chatTitle =
+          first.length > 42 ? first.slice(0, 42).trimEnd() + "…" : first;
+        tab.title = tab.chatTitle;
+        updateTabPresentation(tab);
+      }
+    }
+    scheduleSaveSession();
+    return;
+  }
+
+  if (payload.op !== "set-title") return;
+  const title = String(payload.data?.title || "").trim();
+  if (!title) return;
+  tab.chatMode = true;
+  tab.chatTitle = title;
+  tab.title = title;
+  updateTabPresentation(tab);
+  syncChromeChatModeClass();
+  scheduleSaveSession();
+}
+
 function canBookmark(url) {
   if (!url || isHome(url) || isHistoryPage(url) || isDownloadsPage(url) || isCookiesPage(url) || isSettingsPage(url))
     return false;
@@ -319,25 +610,32 @@ async function createTab(url, opts = {}) {
     : PARTITION;
 
   const startURL = url || HOME;
+  let title = isHome(startURL)
+    ? "Home"
+    : isHistoryPage(startURL)
+      ? "History"
+      : isDownloadsPage(startURL)
+        ? "Downloads"
+        : isCookiesPage(startURL)
+          ? "Cookies"
+          : isSettingsPage(startURL)
+            ? "Settings"
+            : "New tab";
+  if (opts.chatTitle) title = String(opts.chatTitle);
+  else if (opts.title) title = String(opts.title);
+
   const tab = {
     id,
-    title: isHome(startURL)
-      ? "Home"
-      : isHistoryPage(startURL)
-        ? "History"
-        : isDownloadsPage(startURL)
-          ? "Downloads"
-          : isCookiesPage(startURL)
-            ? "Cookies"
-            : isSettingsPage(startURL)
-              ? "Settings"
-              : "New tab",
+    title,
     url: startURL,
-    favicon: null,
+    favicon: opts.favicon || null,
     private: isPrivate,
     partition,
     zoom: ZOOM_DEFAULT,
     webContentsId: null,
+    chatMode: !!opts.chatMode,
+    chatTitle: opts.chatTitle || null,
+    chatMessages: normalizeTabChatMessages(opts.chatMessages),
   };
   tabs.push(tab);
   renderTabs();
@@ -352,7 +650,9 @@ async function createTab(url, opts = {}) {
     if (result?.webContentsId) tab.webContentsId = result.webContentsId;
   } catch (_) {}
 
-  setActive(id);
+  if (opts.activate !== false) setActive(id);
+  else updateTabPresentation(tab);
+  scheduleSaveSession();
   return tab;
 }
 
@@ -411,6 +711,7 @@ function closeTab(id) {
   }
   tabAdCounts.delete(id);
   renderTabs();
+  scheduleSaveSession();
 }
 
 function setActive(id, opts = {}) {
@@ -429,7 +730,12 @@ function setActive(id, opts = {}) {
   renderSideRail();
   refreshFilterPanelCounts();
   if (slopPanelOverlayOpen) refreshSlopPanelOverlay();
-  if (t && isHome(t.url)) focusHomeSearch(t);
+  syncChromeChatModeClass();
+  if (t && isHome(t.url)) {
+    syncChatModeOnTab(t, { instant: true });
+    focusHomeSearch(t);
+  }
+  scheduleSaveSession();
 }
 
 /*
@@ -588,6 +894,8 @@ function handleTabEvent(msg) {
       handleHistoryGuestMessage(tab, msg.payload).catch(() => {});
     } else if (msg.channel === "slop:downloads") {
       handleDownloadsGuestMessage(tab, msg.payload).catch(() => {});
+    } else if (msg.channel === "slop:chat") {
+      handleChatGuestMessage(tab, msg.payload);
     }
     return;
   }
@@ -600,6 +908,16 @@ function handleTabEvent(msg) {
     if (isCookiesPage(tab.url)) injectCookiesPage(tab);
     if (isSettingsPage(tab.url)) injectSettingsPage(tab);
     if (isHome(tab.url) && tab.id === activeId) focusHomeSearch(tab, 50);
+    if (isHome(tab.url)) {
+      if (chatModePendingTabId === tab.id) {
+        tab.chatMode = true;
+        chatModePendingTabId = null;
+        if (!tab.chatTitle) tab.title = "New Conversation";
+      }
+      syncChatModeOnTab(tab, { instant: true });
+      syncChromeChatModeClass();
+      applyChatTabTitle(tab);
+    }
     return;
   }
 
@@ -609,13 +927,23 @@ function handleTabEvent(msg) {
     if (isCookiesPage(tab.url)) injectCookiesPage(tab);
     if (isSettingsPage(tab.url)) injectSettingsPage(tab);
     if (isHome(tab.url) && tab.id === activeId) focusHomeSearch(tab, 50);
+    if (isHome(tab.url)) {
+      if (chatModePendingTabId === tab.id) {
+        tab.chatMode = true;
+        chatModePendingTabId = null;
+        if (!tab.chatTitle) tab.title = "New Conversation";
+      }
+      syncChatModeOnTab(tab, { instant: !!tab.chatMode });
+      syncChromeChatModeClass();
+      applyChatTabTitle(tab);
+    }
     return;
   }
 
   if (type === "page-title-updated") {
     const href = msg.url || tab.url;
     const next = isHome(href)
-      ? "Home"
+      ? homeTabTitle(tab)
       : isHistoryPage(href)
         ? "History"
         : isDownloadsPage(href)
@@ -653,21 +981,35 @@ function handleTabEvent(msg) {
     if (nextOrigin !== prevOrigin || !tab.favicon) {
       tab.favicon = nextOrigin;
     }
-    if (isHome(tab.url)) tab.title = "Home";
+    if (isHome(tab.url)) tab.title = homeTabTitle(tab);
     else if (isHistoryPage(tab.url)) tab.title = "History";
     else if (isDownloadsPage(tab.url)) {
       tab.title = "Downloads";
       if (tab.id === activeId) dismissDownloadIndicator();
     } else if (isCookiesPage(tab.url)) tab.title = "Cookies";
     else if (isSettingsPage(tab.url)) tab.title = "Settings";
+    else {
+      tab.chatMode = false;
+    }
     pushSessionHistory(tab);
+    scheduleSaveSession();
     if (tab.id === activeId) {
       syncAddressBar(tab.url);
       syncBookmarkButton(tab.url);
       updateNavButtons();
       updatePrivateChrome();
       updateTabPresentation(tab);
-      if (isHome(tab.url)) focusHomeSearch(tab, 50);
+      syncChromeChatModeClass();
+      if (isHome(tab.url)) {
+        if (chatModePendingTabId === tab.id) {
+          tab.chatMode = true;
+          chatModePendingTabId = null;
+          if (!tab.chatTitle) tab.title = "New Conversation";
+        }
+        applyChatTabTitle(tab);
+        syncChatModeOnTab(tab, { instant: true });
+        focusHomeSearch(tab, 50);
+      }
     } else {
       updateTabPresentation(tab);
       updateTabChromeClasses();
@@ -723,6 +1065,9 @@ window.slopAPI.tabs.onMainCreated((payload) => {
     partition: payload.partition || PARTITION,
     zoom: ZOOM_DEFAULT,
     webContentsId: payload.webContentsId ?? null,
+    chatMode: false,
+    chatTitle: null,
+    chatMessages: [],
   });
   renderTabs();
   setActive(tabId, { fromMain: true });
@@ -1786,6 +2131,11 @@ function runMenuAction(action, detail = {}) {
     toggleMenu(false);
     return;
   }
+  if (action === "chat-mode") {
+    toggleChatMode();
+    toggleMenu(false);
+    return;
+  }
   if (action === "newtab") createTab(HOME);
   else if (action === "newwindow") window.slopAPI.newWindow({});
   else if (action === "newprivate") createTab(HOME, { private: true });
@@ -2019,6 +2369,7 @@ function setMaximized(isMax) {
   document.body.classList.toggle("maximized", !!isMax);
   els.max.title = isMax ? "Restore" : "Maximize";
   fitActiveSidePanel();
+  refreshSessionRestoreNoticePosition();
 }
 
 winApi.onMaximizedChange(setMaximized);
@@ -2405,10 +2756,23 @@ window.slopAPI.downloadPanelOverlay.onClosed(() => {
 export function startChrome() {
   renderIcons();
   scheduleContentBoundsSync();
-  createTab(HOME);
+  bootSession().catch(() => createTab(HOME));
   refreshBrowseHistory();
   refreshBookmarks();
   refreshDownloads();
+  window.slopAPI.sessionRestoreOverlay?.onAction?.((payload) => {
+    const action = payload?.action;
+    if (action === "session-restore-yes") {
+      acceptSessionRestore().catch(() => {});
+      return;
+    }
+    if (action === "session-restore-no") {
+      declineSessionRestore().catch(() => {});
+    }
+  });
+  window.addEventListener("resize", () => {
+    refreshSessionRestoreNoticePosition();
+  });
   window.slopAPI.onHistoryChanged(() => {
     refreshBrowseHistory();
     for (const tab of tabs) {

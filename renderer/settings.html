@@ -178,6 +178,68 @@
         color: var(--muted);
       }
 
+      .toggle-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 12px 14px;
+      }
+      .toggle-row + .toggle-row {
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .toggle-copy {
+        min-width: 0;
+      }
+      .toggle-title {
+        font-size: 13.5px;
+        font-weight: 550;
+        margin-bottom: 2px;
+      }
+      .toggle-hint {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.35;
+      }
+      .toggle-switch {
+        position: relative;
+        width: 40px;
+        height: 22px;
+        border: none;
+        border-radius: 999px;
+        background: #3a3a40;
+        flex: 0 0 auto;
+        cursor: pointer;
+        padding: 0;
+        transition: background 0.15s ease;
+      }
+      .toggle-switch::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform 0.15s ease;
+      }
+      .toggle-switch[aria-checked="true"] {
+        background: #6c8cff;
+      }
+      .toggle-switch[aria-checked="true"]::after {
+        transform: translateX(18px);
+      }
+
       /* Provider pick — same look as burger menu dropdown */
       .pick-wrap {
         position: relative;
@@ -508,6 +570,43 @@
                 autocomplete="off"
               />
             </div>
+            <div class="field" id="openRouterAutoField" hidden>
+              <label class="field-label">OpenRouter auto routing</label>
+              <span class="field-hint"
+                >Auto routers pick a model for you. Free stays on free models;
+                Pro may use paid models.</span
+              >
+              <div class="toggle-stack">
+                <div class="toggle-row">
+                  <div class="toggle-copy">
+                    <div class="toggle-title">Auto Free</div>
+                    <div class="toggle-hint">Uses <code>openrouter/free</code></div>
+                  </div>
+                  <button
+                    type="button"
+                    class="toggle-switch"
+                    id="openRouterAutoFree"
+                    role="switch"
+                    aria-checked="false"
+                    aria-label="Auto Free"
+                  ></button>
+                </div>
+                <div class="toggle-row">
+                  <div class="toggle-copy">
+                    <div class="toggle-title">Auto Pro</div>
+                    <div class="toggle-hint">Uses <code>openrouter/auto</code></div>
+                  </div>
+                  <button
+                    type="button"
+                    class="toggle-switch"
+                    id="openRouterAutoPro"
+                    role="switch"
+                    aria-checked="false"
+                    aria-label="Auto Pro"
+                  ></button>
+                </div>
+              </div>
+            </div>
             <div class="field">
               <label class="field-label" id="agentModelLabelTitle">Model</label>
               <span class="field-hint" id="agentModelHint">Loaded from your provider. Select the default model for new chats.</span>
@@ -560,6 +659,12 @@
         apiKey: "",
         baseUrl: "",
         model: "",
+        openRouterAuto: "",
+      };
+
+      const OPENROUTER_AUTO = {
+        free: { id: "openrouter/free", label: "Auto Free" },
+        auto: { id: "openrouter/auto", label: "Auto Pro" },
       };
 
       const PROVIDER_LABELS = {
@@ -574,6 +679,7 @@
       let agentModels = [];
       let modelLoadTimer = null;
       let modelLoadSeq = 0;
+      let openRouterAuto = "";
 
       function currentAgentForm() {
         return {
@@ -581,7 +687,25 @@
           apiKey: document.getElementById("agentApiKey")?.value?.trim() || "",
           baseUrl: document.getElementById("agentBaseUrl")?.value?.trim() || "",
           model: document.getElementById("agentModel")?.value?.trim() || "",
+          openRouterAuto: openRouterAuto || "",
         };
+      }
+
+      function syncOpenRouterAutoSwitches() {
+        const freeBtn = document.getElementById("openRouterAutoFree");
+        const proBtn = document.getElementById("openRouterAutoPro");
+        if (freeBtn) freeBtn.setAttribute("aria-checked", openRouterAuto === "free" ? "true" : "false");
+        if (proBtn) proBtn.setAttribute("aria-checked", openRouterAuto === "auto" ? "true" : "false");
+      }
+
+      async function setOpenRouterAuto(mode) {
+        const next = openRouterAuto === mode ? "" : mode;
+        openRouterAuto = next;
+        syncOpenRouterAutoSwitches();
+        if (next === "free") setModelLabel(OPENROUTER_AUTO.free.id);
+        else if (next === "auto") setModelLabel(OPENROUTER_AUTO.auto.id);
+        await saveAgentSettings();
+        renderModelList(agentModels, document.getElementById("agentModel")?.value || "");
       }
 
       function setModelMenuOpen(open) {
@@ -625,11 +749,23 @@
           label.textContent = "Select a model";
           return;
         }
+        if (id === OPENROUTER_AUTO.free.id || openRouterAuto === "free") {
+          label.textContent = OPENROUTER_AUTO.free.label;
+          return;
+        }
+        if (id === OPENROUTER_AUTO.auto.id || openRouterAuto === "auto") {
+          label.textContent = OPENROUTER_AUTO.auto.label;
+          return;
+        }
         const match = agentModels.find((m) => m.id === id);
         label.textContent = match?.name || id;
       }
 
       function selectModel(id) {
+        openRouterAuto = "";
+        if (id === OPENROUTER_AUTO.free.id) openRouterAuto = "free";
+        else if (id === OPENROUTER_AUTO.auto.id) openRouterAuto = "auto";
+        syncOpenRouterAutoSwitches();
         setModelLabel(id);
         document.querySelectorAll("#agentModelList .pick-item").forEach((btn) => {
           const on = btn.dataset.value === id;
@@ -850,11 +986,16 @@
 
       async function saveAgentSettings() {
         const provider = document.getElementById("agentProvider")?.value || DEFAULT_AGENT.provider;
+        let model = document.getElementById("agentModel")?.value?.trim() || "";
+        let auto = provider === "openrouter" ? openRouterAuto || "" : "";
+        if (auto === "free") model = OPENROUTER_AUTO.free.id;
+        if (auto === "auto") model = OPENROUTER_AUTO.auto.id;
         const data = {
           provider,
           apiKey: document.getElementById("agentApiKey")?.value?.trim() || "",
           baseUrl: document.getElementById("agentBaseUrl")?.value?.trim() || "",
-          model: document.getElementById("agentModel")?.value?.trim() || "",
+          model,
+          openRouterAuto: auto,
         };
         if (window.slopApp?.agentSettings?.set) {
           try {
@@ -874,6 +1015,13 @@
         if (apiKeyEl) apiKeyEl.value = data.apiKey || "";
         if (baseUrlEl) baseUrlEl.value = data.baseUrl || "";
         if (modelEl) modelEl.value = data.model || "";
+        openRouterAuto =
+          data.provider === "openrouter" ? String(data.openRouterAuto || "") : "";
+        if (!openRouterAuto) {
+          if (data.model === OPENROUTER_AUTO.free.id) openRouterAuto = "free";
+          else if (data.model === OPENROUTER_AUTO.auto.id) openRouterAuto = "auto";
+        }
+        syncOpenRouterAutoSwitches();
         setModelLabel(data.model || "");
         updateAgentFields();
         loadAgentModels();
@@ -883,17 +1031,26 @@
         const provider = document.getElementById("agentProvider")?.value || "openai";
         const apiKeyField = document.getElementById("apiKeyField");
         const baseUrlField = document.getElementById("baseUrlField");
+        const openRouterField = document.getElementById("openRouterAutoField");
         const hint = document.getElementById("agentModelHint");
         const isLocal = provider === "ollama";
         const isCustom = provider === "custom";
+        const isOpenRouter = provider === "openrouter";
         if (apiKeyField) apiKeyField.hidden = isLocal;
         if (baseUrlField) baseUrlField.hidden = !(isLocal || isCustom);
+        if (openRouterField) openRouterField.hidden = !isOpenRouter;
+        if (!isOpenRouter) {
+          openRouterAuto = "";
+          syncOpenRouterAutoSwitches();
+        }
         if (hint) {
           hint.textContent = isLocal
             ? "Loaded from your local Ollama instance."
             : isCustom
               ? "Loaded from your custom OpenAI-compatible endpoint."
-              : "Loaded from your provider. Select the default model for new chats.";
+              : isOpenRouter
+                ? "Pick a model, or enable Auto Free / Auto Pro above."
+                : "Loaded from your provider. Select the default model for new chats.";
         }
       }
 
@@ -1063,6 +1220,13 @@
 
       initProviderPick();
       initModelPick();
+
+      document.getElementById("openRouterAutoFree")?.addEventListener("click", () => {
+        setOpenRouterAuto("free").catch(() => {});
+      });
+      document.getElementById("openRouterAutoPro")?.addEventListener("click", () => {
+        setOpenRouterAuto("auto").catch(() => {});
+      });
 
       (async function initAgentSettings() {
         let data = await loadAgentSettings();

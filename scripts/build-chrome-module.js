@@ -205,10 +205,23 @@ const footer = `
 export function startChrome() {
   renderIcons();
   scheduleContentBoundsSync();
-  createTab(HOME);
+  bootSession().catch(() => createTab(HOME));
   refreshBrowseHistory();
   refreshBookmarks();
   refreshDownloads();
+  window.slopAPI.sessionRestoreOverlay?.onAction?.((payload) => {
+    const action = payload?.action;
+    if (action === "session-restore-yes") {
+      acceptSessionRestore().catch(() => {});
+      return;
+    }
+    if (action === "session-restore-no") {
+      declineSessionRestore().catch(() => {});
+    }
+  });
+  window.addEventListener("resize", () => {
+    refreshSessionRestoreNoticePosition();
+  });
   window.slopAPI.onHistoryChanged(() => {
     refreshBrowseHistory();
     for (const tab of tabs) {

@@ -1,0 +1,35 @@
+html,
+body.session-restore-overlay-root {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+  user-select: none;
+}
+
+.session-restore-overlay-root .session-restore-notice {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  left: auto;
+  z-index: 1;
+  width: max-content;
+  max-width: calc(100% - 16px);
+  box-sizing: border-box;
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+  transition: none;
+  gap: 12px;
+  padding: 10px 10px 10px 12px;
+}
+
+.session-restore-overlay-root .session-restore-copy {
+  flex: 0 1 auto;
+}
+
+.session-restore-overlay-root .session-restore-notice.hidden {
+  display: none;
+}

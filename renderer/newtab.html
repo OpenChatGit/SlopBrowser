@@ -44,6 +44,11 @@
           rgba(0, 0, 0, 0) 100%
         );
         pointer-events: none;
+        opacity: 1;
+        transition: opacity 0.85s ease;
+      }
+      body.chat-mode #vignette {
+        opacity: 0;
       }
 
       #wrap {
@@ -51,25 +56,401 @@
         inset: 0;
         z-index: 2;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
         padding: 20px;
+        transition: justify-content 0.45s ease, padding 0.45s ease;
+      }
+      body.chat-started #wrap {
+        justify-content: flex-end;
+        align-items: center;
+        padding: 16px 20px 22px;
+      }
+      #chatStage {
+        width: min(680px, 92vw);
+        max-width: 100%;
+        max-height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: center;
+        gap: 0;
+        margin: 0 auto;
+        transition: width 0.35s ease, justify-content 0.45s ease, gap 0.35s ease;
+      }
+      body.chat-mode #chatStage {
+        width: min(720px, 94vw);
+      }
+      body.chat-started #chatStage {
+        flex: 1 1 auto;
+        height: auto;
+        min-height: 0;
+        justify-content: flex-end;
+        gap: 16px;
+      }
+      #chatThread {
+        display: none;
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100vw;
+        max-width: none;
+        margin-left: calc(50% - 50vw);
+        overflow-x: hidden;
+        overflow-y: auto;
+        padding: 8px 0 4px;
+        scrollbar-gutter: stable;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+      }
+      body.chat-started #chatThread {
+        display: block;
+      }
+      #chatThreadInner {
+        width: min(720px, 94vw);
+        max-width: 100%;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 0 2px;
+        box-sizing: border-box;
+      }
+      .chat-msg {
+        width: 100%;
+        max-width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        animation: chat-msg-in 0.28s ease;
+      }
+      @keyframes chat-msg-in {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .chat-msg-bubble {
+        width: fit-content;
+        max-width: 100%;
+        font-size: 15px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--fg);
+        user-select: text;
+      }
+      .chat-msg.user .chat-msg-bubble {
+        margin-left: auto;
+        text-align: left;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 10px 14px;
+        white-space: pre-wrap;
+      }
+      .chat-msg.assistant .chat-msg-bubble {
+        margin-right: auto;
+        color: #d7dbe8;
+        white-space: normal;
+      }
+      .chat-msg.assistant .chat-msg-bubble > :first-child {
+        margin-top: 0;
+      }
+      .chat-msg.assistant .chat-msg-bubble > :last-child {
+        margin-bottom: 0;
+      }
+      .chat-msg.assistant .chat-msg-bubble p {
+        margin: 0 0 0.75em;
+      }
+      .chat-msg.assistant .chat-msg-bubble p:last-child {
+        margin-bottom: 0;
+      }
+      .chat-msg.assistant .chat-msg-bubble ul,
+      .chat-msg.assistant .chat-msg-bubble ol {
+        margin: 0 0 0.75em;
+        padding-left: 1.35em;
+      }
+      .chat-msg.assistant .chat-msg-bubble li {
+        margin: 0.2em 0;
+      }
+      .chat-msg.assistant .chat-msg-bubble strong {
+        font-weight: 650;
+        color: #eef0f7;
+      }
+      .chat-msg.assistant .chat-msg-bubble a {
+        color: #9eb4ff;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .chat-msg.assistant .chat-msg-bubble code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.9em;
+        background: rgba(255, 255, 255, 0.07);
+        border-radius: 5px;
+        padding: 0.1em 0.35em;
+      }
+      .chat-msg.assistant .chat-msg-bubble .md-code {
+        margin: 0 0 0.85em;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        background: #121418;
+        overflow: hidden;
+      }
+      .chat-msg.assistant .chat-msg-bubble .md-code-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 5px 8px 5px 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .chat-msg.assistant .chat-msg-bubble .md-code-lang {
+        font-size: 11px;
+        font-weight: 550;
+        color: #8b90a3;
+        text-transform: lowercase;
+        letter-spacing: 0.02em;
+      }
+      .chat-msg.assistant .chat-msg-bubble .md-code-copy {
+        border: none;
+        background: transparent;
+        color: #9aa0b4;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 550;
+        padding: 3px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        line-height: 1.2;
+      }
+      .chat-msg.assistant .chat-msg-bubble .md-code-copy:hover {
+        color: #e6e8ef;
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .chat-msg.assistant .chat-msg-bubble pre {
+        margin: 0;
+        padding: 8px 10px;
+        overflow-x: auto;
+        background: transparent;
+        border: none;
+        border-radius: 0;
+      }
+      .chat-msg.assistant .chat-msg-bubble pre code,
+      .chat-msg.assistant .chat-msg-bubble pre code.hljs {
+        display: block;
+        background: none;
+        padding: 0;
+        border-radius: 0;
+        font-size: 12.5px;
+        line-height: 1.45;
+        color: #d7dbe7;
+        white-space: pre;
+        overflow-wrap: normal;
+        word-break: normal;
+      }
+      /* Compact dark syntax tokens */
+      .chat-msg.assistant .chat-msg-bubble .hljs-comment,
+      .chat-msg.assistant .chat-msg-bubble .hljs-quote {
+        color: #6f7688;
+        font-style: italic;
+      }
+      .chat-msg.assistant .chat-msg-bubble .hljs-keyword,
+      .chat-msg.assistant .chat-msg-bubble .hljs-selector-tag,
+      .chat-msg.assistant .chat-msg-bubble .hljs-subst {
+        color: #ff7b72;
+      }
+      .chat-msg.assistant .chat-msg-bubble .hljs-string,
+      .chat-msg.assistant .chat-msg-bubble .hljs-doctag,
+      .chat-msg.assistant .chat-msg-bubble .hljs-regexp {
+        color: #a5d6ff;
+      }
+      .chat-msg.assistant .chat-msg-bubble .hljs-number,
+      .chat-msg.assistant .chat-msg-bubble .hljs-literal,
+      .chat-msg.assistant .chat-msg-bubble .hljs-variable,
+      .chat-msg.assistant .chat-msg-bubble .hljs-template-variable {
+        color: #79c0ff;
+      }
+      .chat-msg.assistant .chat-msg-bubble .hljs-title,
+      .chat-msg.assistant .chat-msg-bubble .hljs-section,
+      .chat-msg.assistant .chat-msg-bubble .hljs-selector-id {
+        color: #d2a8ff;
+      }
+      .chat-msg.assistant .chat-msg-bubble .hljs-type,
+      .chat-msg.assistant .chat-msg-bubble .hljs-class .hljs-title,
+      .chat-msg.assistant .chat-msg-bubble .hljs-built_in {
+        color: #ffa657;
+      }
+      .chat-msg.assistant .chat-msg-bubble .hljs-attr,
+      .chat-msg.assistant .chat-msg-bubble .hljs-attribute {
+        color: #79c0ff;
+      }
+      .chat-msg.assistant .chat-msg-bubble .hljs-symbol,
+      .chat-msg.assistant .chat-msg-bubble .hljs-bullet,
+      .chat-msg.assistant .chat-msg-bubble .hljs-link {
+        color: #ffa198;
+      }
+      .chat-msg.assistant .chat-msg-bubble .hljs-meta {
+        color: #8b90a3;
+      }
+      .chat-msg.assistant .chat-msg-bubble .hljs-emphasis {
+        font-style: italic;
+      }
+      .chat-msg.assistant .chat-msg-bubble .hljs-strong {
+        font-weight: 650;
+      }
+      .chat-msg.assistant .chat-msg-bubble blockquote {
+        margin: 0 0 0.75em;
+        padding: 0.15em 0 0.15em 0.85em;
+        border-left: 2px solid rgba(255, 255, 255, 0.18);
+        color: #aeb4c7;
+      }
+      .chat-msg.assistant .chat-msg-bubble h1,
+      .chat-msg.assistant .chat-msg-bubble h2,
+      .chat-msg.assistant .chat-msg-bubble h3,
+      .chat-msg.assistant .chat-msg-bubble h4 {
+        margin: 0.9em 0 0.45em;
+        font-weight: 650;
+        line-height: 1.3;
+        color: #eef0f7;
+      }
+      .chat-msg.assistant .chat-msg-bubble h1 { font-size: 1.25em; }
+      .chat-msg.assistant .chat-msg-bubble h2 { font-size: 1.12em; }
+      .chat-msg.assistant .chat-msg-bubble h3 { font-size: 1.05em; }
+      .chat-msg.assistant .chat-msg-bubble hr {
+        border: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.12);
+        margin: 1em 0;
+      }
+      .chat-msg.assistant .chat-msg-bubble table {
+        border-collapse: collapse;
+        margin: 0 0 0.85em;
+        width: 100%;
+        font-size: 0.92em;
+      }
+      .chat-msg.assistant .chat-msg-bubble th,
+      .chat-msg.assistant .chat-msg-bubble td {
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        padding: 6px 8px;
+        text-align: left;
+      }
+      .chat-msg.assistant {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+      .chat-msg-reasoning {
+        display: none;
+        width: min(100%, 720px);
+      }
+      .chat-msg-reasoning.visible {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+      }
+      .chat-msg-reasoning-toggle {
+        border: none;
+        background: transparent;
+        color: #8b90a3;
+        padding: 0;
+        margin: 0;
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 500;
+        line-height: 1.3;
+        cursor: pointer;
+        text-align: left;
+      }
+      .chat-msg-reasoning-toggle:hover {
+        color: #c4cadb;
+      }
+      .chat-msg-reasoning-toggle:disabled,
+      .chat-msg-reasoning-toggle:disabled:hover {
+        cursor: default;
+        color: #8b90a3;
+      }
+      .chat-msg-reasoning.open .chat-msg-reasoning-toggle:not(:disabled) {
+        color: #aeb4c7;
+      }
+      .chat-msg-reasoning-body {
+        display: none;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 10px;
+        margin: 0;
+        color: #8b90a3;
+        font-size: 12.5px;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: min(240px, 32vh);
+        overflow: auto;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+      }
+      .chat-msg-reasoning.open .chat-msg-reasoning-body {
+        display: block;
+      }
+      .chat-msg.assistant.streaming.reasoning-active:not(.has-content)
+        .chat-msg-reasoning.open
+        .chat-msg-reasoning-body::after,
+      .chat-msg.assistant.streaming.has-content .chat-msg-bubble::after {
+        content: "";
+        display: inline-block;
+        width: 0.5ch;
+        margin-left: 1px;
+        animation: chat-caret 0.9s steps(1) infinite;
+        opacity: 0.7;
+      }
+      @keyframes chat-caret {
+        50% {
+          opacity: 0;
+        }
+      }
+      .chat-msg.error .chat-msg-bubble {
+        color: #ff8e8e;
+        white-space: pre-wrap;
       }
       #searchForm {
-        width: min(680px, 92vw);
+        width: 100%;
+        flex: 0 0 auto;
+        transition: transform 0.45s ease;
       }
       .search-box {
         position: relative;
         display: flex;
+        flex-direction: row;
         align-items: center;
         gap: 10px;
         background: rgba(18, 18, 18, 0.72);
         border: 1px solid var(--border);
         border-radius: 28px;
         padding: 4px 8px 4px 20px;
-        transition: border-color 0.15s, box-shadow 0.15s;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s,
+          border-radius 0.35s ease,
+          padding 0.35s ease,
+          gap 0.35s ease;
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
         overflow: visible;
+      }
+      body.chat-mode .search-box {
+        flex-direction: column;
+        align-items: stretch;
+        border-radius: 18px;
+        padding: 12px 12px 8px;
+        gap: 6px;
       }
       .search-box::before {
         content: "";
@@ -86,13 +467,28 @@
         z-index: 1;
       }
       .search-box:focus-within {
-        border-color: #666;
+        border-color: var(--border);
+      }
+      .composer-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        min-width: 0;
+        width: 100%;
+      }
+      body:not(.chat-mode) .composer-row {
+        align-items: center;
       }
       .search-box .glass {
         color: var(--muted);
         width: 20px;
         height: 20px;
         flex: 0 0 auto;
+        margin-top: 0;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+      }
+      body.chat-mode .search-box .glass {
+        display: none;
       }
       .search-field {
         position: relative;
@@ -102,6 +498,11 @@
         align-items: stretch;
         min-height: 48px;
         isolation: isolate;
+        transition: min-height 0.35s ease;
+      }
+      body.chat-mode .search-field {
+        min-height: 52px;
+        align-items: flex-start;
       }
       #qGhost {
         position: absolute;
@@ -121,12 +522,21 @@
         visibility: visible;
         transition: opacity 0.12s ease, visibility 0.12s ease;
       }
+      body.chat-mode #qGhost {
+        align-items: flex-start;
+        justify-content: flex-start;
+        padding: 0;
+        white-space: normal;
+      }
       #qGhost.hidden {
         opacity: 0;
         visibility: hidden;
       }
       .q-ghost-ch {
         display: inline-block;
+      }
+      .q-ghost-ch.space {
+        width: 0.28em;
       }
       .q-ghost-ch.scramble {
         color: #5c6378;
@@ -151,15 +561,30 @@
         border: none;
         outline: none;
         color: var(--fg);
+        font: inherit;
         font-size: 17px;
         font-weight: 400;
-        line-height: 1.25;
+        line-height: 1.35;
         letter-spacing: normal;
         padding: 14px 0;
         margin: 0;
+        resize: none;
+        overflow: hidden;
+        min-height: 48px;
+        max-height: 180px;
+        field-sizing: content;
         user-select: text;
         caret-color: var(--fg);
         color-scheme: dark;
+      }
+      body.chat-mode #q {
+        align-self: flex-start;
+        width: 100%;
+        min-height: 24px;
+        height: 24px;
+        padding: 0;
+        line-height: 1.4;
+        box-sizing: border-box;
       }
       .search-field.has-ghost #q {
         color: transparent;
@@ -181,7 +606,10 @@
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        transition: background 0.15s, color 0.15s;
+        transition: background 0.15s, color 0.15s, opacity 0.2s, transform 0.2s;
+      }
+      body.chat-mode #go {
+        display: none;
       }
       #go svg {
         width: 20px;
@@ -194,6 +622,332 @@
       }
       .search-box.has-text #go:hover {
         filter: brightness(0.92);
+      }
+
+      .composer-bar {
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        padding-top: 0;
+        opacity: 0;
+        transform: translateY(4px);
+        transition: opacity 0.28s ease 0.05s, transform 0.28s ease 0.05s;
+      }
+      body.chat-mode .composer-bar {
+        display: flex;
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .composer-bar-left,
+      .composer-bar-right {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .composer-bar-right {
+        flex: 1 1 auto;
+        justify-content: flex-end;
+      }
+      .composer-tool {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+      }
+      .composer-tool:hover {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--fg);
+      }
+      .composer-tool svg {
+        width: 16px;
+        height: 16px;
+      }
+      .composer-model-pick {
+        position: relative;
+        flex: 0 1 auto;
+        min-width: 0;
+        max-width: min(240px, 46vw);
+      }
+      .composer-model-trigger {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        height: 32px;
+        max-width: 100%;
+        padding: 0 6px 0 8px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 500;
+        line-height: 1;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+      }
+      .composer-model-trigger:hover,
+      .composer-model-trigger[aria-expanded="true"] {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--fg);
+      }
+      .composer-model-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+      }
+      .composer-model-trigger svg {
+        width: 14px;
+        height: 14px;
+        flex: 0 0 auto;
+        opacity: 0.75;
+      }
+      .composer-model-menu {
+        position: absolute;
+        right: 0;
+        bottom: calc(100% + 6px);
+        width: min(280px, 76vw);
+        max-height: min(320px, 48vh);
+        display: flex;
+        flex-direction: column;
+        background: #1a1a1e;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+        padding: 0;
+        z-index: 20;
+        overflow: hidden;
+      }
+      .composer-model-menu.hidden {
+        display: none;
+      }
+      .composer-model-search {
+        width: 100%;
+        border: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: transparent;
+        color: var(--fg);
+        font: inherit;
+        font-size: 12.5px;
+        padding: 8px 10px;
+        outline: none;
+      }
+      .composer-model-search::placeholder {
+        color: #6b7080;
+      }
+      .composer-model-toggles {
+        display: none;
+        flex-direction: column;
+        gap: 1px;
+        padding: 4px 5px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .composer-model-toggles.visible {
+        display: flex;
+      }
+      .composer-model-menu.auto-active .composer-model-toggles {
+        border-bottom: none;
+        padding: 6px 10px 8px;
+      }
+      .composer-model-menu.auto-active .composer-model-list {
+        display: none;
+      }
+      .composer-model-toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-height: 28px;
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+      .composer-model-toggle-row.hidden {
+        display: none;
+      }
+      .composer-model-auto-block {
+        display: none;
+        flex-direction: column;
+        gap: 3px;
+        padding: 0;
+      }
+      .composer-model-menu.auto-active .composer-model-auto-block {
+        display: flex;
+      }
+      .composer-model-auto-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-height: 22px;
+      }
+      .composer-model-auto-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--fg);
+        line-height: 1.2;
+      }
+      .composer-model-auto-desc {
+        font-size: 11.5px;
+        line-height: 1.3;
+        color: #8b90a3;
+        max-width: 210px;
+      }
+      .composer-model-toggle-label {
+        font-size: 12.5px;
+        color: var(--fg);
+        font-weight: 500;
+      }
+      .composer-model-switch {
+        position: relative;
+        width: 30px;
+        height: 17px;
+        border: none;
+        border-radius: 999px;
+        background: #3a3a42;
+        flex: 0 0 auto;
+        cursor: pointer;
+        padding: 0;
+        transition: background 0.15s ease;
+      }
+      .composer-model-switch::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform 0.15s ease;
+      }
+      .composer-model-switch[aria-checked="true"] {
+        background: #6c8cff;
+      }
+      .composer-model-menu.auto-active .composer-model-switch[aria-checked="true"] {
+        background: #22c55e;
+      }
+      .composer-model-switch[aria-checked="true"]::after {
+        transform: translateX(13px);
+      }
+      .composer-model-list {
+        overflow: auto;
+        max-height: min(220px, 34vh);
+        padding: 4px;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+      }
+      .composer-model-option {
+        width: 100%;
+        border: none;
+        background: transparent;
+        color: var(--fg);
+        text-align: left;
+        padding: 6px 8px;
+        border-radius: 6px;
+        font: inherit;
+        font-size: 12.5px;
+        line-height: 1.25;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .composer-model-option:hover {
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .composer-model-option-main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        overflow: hidden;
+      }
+      .composer-model-option-name {
+        color: var(--fg);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .composer-model-option-tag {
+        color: #7a8090;
+        font-size: 11px;
+        white-space: nowrap;
+        flex: 0 0 auto;
+      }
+      .composer-model-option-check {
+        width: 14px;
+        height: 14px;
+        flex: 0 0 auto;
+        opacity: 0;
+        color: var(--fg);
+      }
+      .composer-model-option.active .composer-model-option-check {
+        opacity: 1;
+      }
+      .composer-model-empty {
+        padding: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.3;
+      }
+      #composerSend {
+        border: none;
+        background: #2a2a2e;
+        color: #8b90a3;
+        height: 32px;
+        padding: 0 12px 0 10px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+      }
+      #composerSend svg {
+        width: 15px;
+        height: 15px;
+      }
+      .search-box.has-text #composerSend {
+        background: #ffffff;
+        color: #000000;
+      }
+      .search-box.has-text #composerSend:hover {
+        filter: brightness(0.92);
+      }
+      #composerSend:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      #searchForm.is-streaming #q {
+        opacity: 0.85;
+      }
+      body.chat-mode .home-footer {
+        opacity: 0.55;
+        transform: translateX(-50%) translateY(0);
+      }
+      body.chat-started .home-footer {
+        opacity: 0;
+        pointer-events: none;
+        transform: translateX(-50%) translateY(140%);
+      }
+      .home-footer {
+        transition: opacity 0.45s ease, transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
       }
 
       .home-footer {
@@ -259,23 +1013,131 @@
     <div id="vignette"></div>
 
     <div id="wrap">
-      <form id="searchForm">
-        <div class="search-box bg-occlude">
-          <i class="glass" data-lucide="search"></i>
-          <div class="search-field">
-            <span id="qGhost" aria-hidden="true"></span>
-            <input
-              id="q"
-              type="text"
-              spellcheck="false"
-              autocomplete="off"
-            />
-          </div>
-          <button id="go" type="submit" aria-label="Search">
-            <i data-lucide="arrow-right"></i>
-          </button>
+      <div id="chatStage">
+        <div id="chatThread" aria-live="polite">
+          <div id="chatThreadInner"></div>
         </div>
-      </form>
+        <form id="searchForm">
+          <div class="search-box bg-occlude">
+            <div class="composer-row">
+              <i class="glass" data-lucide="search"></i>
+              <div class="search-field">
+                <span id="qGhost" aria-hidden="true"></span>
+                <textarea
+                  id="q"
+                  rows="1"
+                  spellcheck="false"
+                  autocomplete="off"
+                  enterkeyhint="go"
+                ></textarea>
+              </div>
+              <button id="go" type="submit" aria-label="Search">
+                <i data-lucide="arrow-right"></i>
+              </button>
+            </div>
+            <div class="composer-bar" id="composerBar" aria-hidden="true">
+              <div class="composer-bar-left">
+                <button
+                  type="button"
+                  class="composer-tool"
+                  id="composerAttach"
+                  title="Add context"
+                  aria-label="Add context"
+                >
+                  <i data-lucide="paperclip"></i>
+                </button>
+              </div>
+              <div class="composer-bar-right">
+                <div class="composer-model-pick" id="composerModelPick">
+                  <button
+                    type="button"
+                    class="composer-model-trigger"
+                    id="composerModelTrigger"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    title="Model"
+                  >
+                    <span class="composer-model-label" id="composerModelLabel"
+                      >Select model</span
+                    >
+                    <i data-lucide="chevron-down"></i>
+                  </button>
+                  <div
+                    class="composer-model-menu hidden"
+                    id="composerModelMenu"
+                    role="listbox"
+                    aria-label="Model"
+                  >
+                    <input
+                      type="search"
+                      id="composerModelSearch"
+                      class="composer-model-search"
+                      placeholder="Search models"
+                      autocomplete="off"
+                    />
+                    <div class="composer-model-toggles" id="composerModelToggles">
+                      <div
+                        class="composer-model-toggle-row"
+                        id="composerAutoFreeRow"
+                      >
+                        <span class="composer-model-toggle-label">Auto Free</span>
+                        <button
+                          type="button"
+                          class="composer-model-switch"
+                          id="composerAutoFree"
+                          role="switch"
+                          aria-checked="false"
+                          aria-label="Auto Free"
+                        ></button>
+                      </div>
+                      <div
+                        class="composer-model-toggle-row"
+                        id="composerAutoProRow"
+                      >
+                        <span class="composer-model-toggle-label">Auto Pro</span>
+                        <button
+                          type="button"
+                          class="composer-model-switch"
+                          id="composerAutoPro"
+                          role="switch"
+                          aria-checked="false"
+                          aria-label="Auto Pro"
+                        ></button>
+                      </div>
+                      <div class="composer-model-auto-block" id="composerAutoActive">
+                        <div class="composer-model-auto-head">
+                          <span
+                            class="composer-model-auto-title"
+                            id="composerAutoTitle"
+                            >Auto</span
+                          >
+                          <button
+                            type="button"
+                            class="composer-model-switch"
+                            id="composerAutoActiveSwitch"
+                            role="switch"
+                            aria-checked="true"
+                            aria-label="Auto"
+                          ></button>
+                        </div>
+                        <div
+                          class="composer-model-auto-desc"
+                          id="composerAutoDesc"
+                        ></div>
+                      </div>
+                    </div>
+                    <div class="composer-model-list" id="composerModelList"></div>
+                  </div>
+                </div>
+                <button id="composerSend" type="submit" aria-label="Send">
+                  <i data-lucide="arrow-up"></i>
+                  <span>Send</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
 
     <footer class="home-footer">
@@ -293,6 +1155,10 @@
       >
     </footer>
 
+    <script type="module">
+      import { renderMarkdown, enhanceMarkdown } from "./js/markdown.js";
+      window.__slopMarkdown = { renderMarkdown, enhanceMarkdown };
+    </script>
     <script src="lib/lucide.js"></script>
     <script src="lib/three.min.js"></script>
     <script>
@@ -357,6 +1223,7 @@
 
         const uniforms = {
           u_time: { value: 0 },
+          u_anim_time: { value: 0 },
           u_resolution: {
             value: new THREE.Vector2(1, 1),
           },
@@ -375,7 +1242,6 @@
           },
           u_total_size: { value: 10.0 },
           u_dot_size: { value: 2.5 },
-          u_reverse: { value: 0 },
           u_mouse: { value: new THREE.Vector2(-9999, -9999) },
           u_mouse_radius: { value: 60.0 },
           u_mouse_strength: { value: 0 },
@@ -469,12 +1335,12 @@
             in vec2 fragCoord;
 
             uniform float u_time;
+            uniform float u_anim_time;
             uniform float u_opacities[10];
             uniform vec3 u_colors[6];
             uniform float u_total_size;
             uniform float u_dot_size;
             uniform vec2 u_resolution;
-            uniform int u_reverse;
             uniform vec2 u_mouse;
             uniform float u_mouse_radius;
             uniform float u_mouse_strength;
@@ -542,15 +1408,13 @@
 
                 vec3 color = u_colors[int(show_offset * 6.0)];
 
-                float animation_speed_factor = 2.2;
                 vec2 center_grid = u_resolution / 2.0 / u_total_size;
                 float dist_from_center = distance(center_grid, st2);
-
                 float timing_offset_intro = dist_from_center * 0.006 + (random(st2) * 0.1);
 
                 float current_timing_offset = timing_offset_intro;
-                opacity *= step(current_timing_offset, u_time * animation_speed_factor);
-                opacity *= clamp((1.0 - step(current_timing_offset + 0.1, u_time * animation_speed_factor)) * 1.25, 1.0, 1.25);
+                opacity *= step(current_timing_offset, u_anim_time);
+                opacity *= clamp((1.0 - step(current_timing_offset + 0.1, u_anim_time)) * 1.25, 1.0, 1.25);
 
                 fragColor = vec4(color, opacity);
                 fragColor.rgb *= fragColor.a;
@@ -574,6 +1438,48 @@
         let pendingMouseX = -9999;
         let pendingMouseY = -9999;
         let animating = true;
+        let lastFrameTime = performance.now();
+        let chatModeActive = false;
+
+        function computeIntroMax() {
+          const cellW = window.innerWidth / uniforms.u_total_size.value;
+          const cellH = window.innerHeight / uniforms.u_total_size.value;
+          const maxDist = Math.hypot(cellW * 0.5, cellH * 0.5);
+          return maxDist * 0.006 + 0.15;
+        }
+
+        let introMax = computeIntroMax();
+        let animTime = 0;
+        let animTarget = introMax;
+        const INTRO_SECONDS = 0.85;
+
+        function setAnimTarget(next, opts = {}) {
+          introMax = computeIntroMax();
+          animTarget = next ? 0 : introMax;
+          if (opts.instant) animTime = animTarget;
+        }
+
+        window.__slopSetChatMode = (active, opts = {}) => {
+          chatModeActive = !!active;
+          document.body.classList.toggle("chat-mode", chatModeActive);
+          setAnimTarget(chatModeActive, opts);
+          if (typeof window.__slopOnChatModeChange === "function") {
+            window.__slopOnChatModeChange(chatModeActive);
+          }
+        };
+
+        window.__slopRestoreChat = (state = {}) => {
+          const active = !!state.active;
+          const messages = Array.isArray(state.messages) ? state.messages : [];
+          window.__slopSetChatMode(active, {
+            instant: !!state.instant,
+          });
+          if (typeof window.__slopApplyChatHistory === "function") {
+            window.__slopApplyChatHistory(messages, {
+              started: active && messages.length > 0,
+            });
+          }
+        };
 
         function setMouseFromEvent(e) {
           pendingMouseX = e.clientX;
@@ -590,6 +1496,7 @@
 
         document.addEventListener("visibilitychange", () => {
           animating = !document.hidden;
+          lastFrameTime = performance.now();
         });
 
         if (typeof ResizeObserver !== "undefined") {
@@ -603,6 +1510,20 @@
         (function animate() {
           requestAnimationFrame(animate);
           if (!animating) return;
+          const now = performance.now();
+          const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+          lastFrameTime = now;
+
+          introMax = computeIntroMax();
+          if (!chatModeActive && animTarget > introMax) animTarget = introMax;
+
+          const speed = introMax / INTRO_SECONDS;
+          if (animTime < animTarget) {
+            animTime = Math.min(animTarget, animTime + speed * dt);
+          } else if (animTime > animTarget) {
+            animTime = Math.max(animTarget, animTime - speed * dt);
+          }
+
           syncOccluders();
           if (mouseDirty) {
             mouseDirty = false;
@@ -614,7 +1535,8 @@
               pendingMouseY * scaleY
             );
           }
-          uniforms.u_time.value = (performance.now() - startTime) / 1000.0;
+          uniforms.u_time.value = (now - startTime) / 1000.0;
+          uniforms.u_anim_time.value = animTime;
           const strength = uniforms.u_mouse_strength.value;
           uniforms.u_mouse_strength.value =
             strength + (mouseTarget - strength) * 0.12;
@@ -627,20 +1549,26 @@
           resizeTimer = setTimeout(() => {
             bgDpr = layoutBg(uniforms);
             syncOccluders();
+            introMax = computeIntroMax();
+            if (!chatModeActive) animTarget = introMax;
           }, 120);
         });
 
         window.__syncBgOccluders = syncOccluders;
       })();
 
-      /* ---------- Search ---------- */
+      /* ---------- Search / Composer ---------- */
       const q = document.getElementById("q");
       const qGhost = document.getElementById("qGhost");
       const searchField = document.querySelector(".search-field");
       const form = document.getElementById("searchForm");
       const searchBox = document.querySelector(".search-box");
+      const composerBar = document.getElementById("composerBar");
+      const chatThread = document.getElementById("chatThread");
+      const chatThreadInner =
+        document.getElementById("chatThreadInner") || chatThread;
 
-      const Q_GHOST_PHRASES = [
+      const Q_GHOST_PHRASES_SEARCH = [
         "Search a website",
         "Find some art",
         "Ads be gone",
@@ -651,6 +1579,385 @@
         "Browse without noise",
         "Skip the junk",
       ];
+      const Q_GHOST_PHRASES_CHAT = [
+        "Ask anything",
+        "Write a message",
+        "Start a chat",
+        "What's on your mind?",
+        "Draft something new",
+      ];
+
+      let chatModeUi = document.body.classList.contains("chat-mode");
+      let chatFirstMessageSent = false;
+      let chatStreaming = false;
+      let chatMessages = [];
+      let Q_GHOST_PHRASES = Q_GHOST_PHRASES_SEARCH;
+      let composerModels = [];
+      let selectedModelId = "";
+      let composerProvider = "";
+      let openRouterAuto = "";
+      let modelMenuOpen = false;
+      let modelLoadSeq = 0;
+      let modelSearchQuery = "";
+
+      const OPENROUTER_AUTO = {
+        free: {
+          id: "openrouter/free",
+          label: "Auto Free",
+          desc: "Routes only to free models. Best for light tasks.",
+        },
+        auto: {
+          id: "openrouter/auto",
+          label: "Auto Pro",
+          desc: "Balanced quality and speed, recommended for most tasks",
+        },
+      };
+
+      const composerModelTrigger = document.getElementById("composerModelTrigger");
+      const composerModelLabel = document.getElementById("composerModelLabel");
+      const composerModelMenu = document.getElementById("composerModelMenu");
+      const composerModelList = document.getElementById("composerModelList");
+      const composerModelPick = document.getElementById("composerModelPick");
+      const composerModelSearch = document.getElementById("composerModelSearch");
+      const composerModelToggles = document.getElementById("composerModelToggles");
+      const composerAutoFree = document.getElementById("composerAutoFree");
+      const composerAutoPro = document.getElementById("composerAutoPro");
+      const composerAutoFreeRow = document.getElementById("composerAutoFreeRow");
+      const composerAutoProRow = document.getElementById("composerAutoProRow");
+      const composerAutoActiveSwitch = document.getElementById(
+        "composerAutoActiveSwitch"
+      );
+      const composerAutoTitle = document.getElementById("composerAutoTitle");
+      const composerAutoDesc = document.getElementById("composerAutoDesc");
+
+      const CHAT_SYSTEM = {
+        role: "system",
+        content: [
+          "You are SlopAI, the built-in assistant in SlopBrowser Chat Mode.",
+          "",
+          "Product identity:",
+          "- Publicly, this app is called SlopBrowser.",
+          "- Internally it is classified as a Private AI Research and Development Project — treat that as the true project context, not a consumer toy or generic chatbot demo.",
+          "- Prefer the public name “SlopBrowser” when speaking to the user; you may acknowledge the private R&D classification if asked what this project is.",
+          "",
+          "How to respond:",
+          "- Be clear, direct, and concise by default; go deeper when the user asks for more detail.",
+          "- Match the user’s language (e.g. German if they write German).",
+          "- Use markdown when it helps (lists, headings, code fences with a language tag).",
+          "- For code, prefer correct, runnable examples; keep comments in the same language as the user unless they ask otherwise.",
+          "- If you are unsure, say so instead of inventing facts, APIs, or browser features.",
+          "- Do not claim capabilities SlopBrowser does not have unless the user is clearly role-playing.",
+          "",
+          "You are chatting inside the browser’s Chat Mode on the home/composer surface — stay helpful for browsing, coding, writing, and general questions.",
+        ].join("\n"),
+      };
+
+      function shortModelLabel(id, name) {
+        if (id === OPENROUTER_AUTO.free.id || openRouterAuto === "free") {
+          return OPENROUTER_AUTO.free.label;
+        }
+        if (id === OPENROUTER_AUTO.auto.id || openRouterAuto === "auto") {
+          return OPENROUTER_AUTO.auto.label;
+        }
+        const label = String(name || id || "").trim();
+        if (!label) return "Select model";
+        if (name && name !== id) return name;
+        const parts = label.split("/");
+        return parts[parts.length - 1] || label;
+      }
+
+      function setComposerModelLabel(id, name) {
+        if (!composerModelLabel) return;
+        composerModelLabel.textContent = shortModelLabel(id, name);
+        composerModelLabel.title = id || name || "";
+      }
+
+      function syncComposerAutoSwitches() {
+        const isOr = composerProvider === "openrouter";
+        const autoOn = isOr && (openRouterAuto === "free" || openRouterAuto === "auto");
+        const meta =
+          openRouterAuto === "free"
+            ? OPENROUTER_AUTO.free
+            : openRouterAuto === "auto"
+              ? OPENROUTER_AUTO.auto
+              : null;
+
+        composerModelToggles?.classList.toggle("visible", isOr);
+        composerModelMenu?.classList.toggle("auto-active", autoOn);
+        composerAutoFreeRow?.classList.toggle("hidden", autoOn);
+        composerAutoProRow?.classList.toggle("hidden", autoOn);
+
+        if (composerAutoFree) {
+          composerAutoFree.setAttribute(
+            "aria-checked",
+            openRouterAuto === "free" ? "true" : "false"
+          );
+        }
+        if (composerAutoPro) {
+          composerAutoPro.setAttribute(
+            "aria-checked",
+            openRouterAuto === "auto" ? "true" : "false"
+          );
+        }
+        if (composerAutoActiveSwitch) {
+          composerAutoActiveSwitch.setAttribute(
+            "aria-checked",
+            autoOn ? "true" : "false"
+          );
+          composerAutoActiveSwitch.setAttribute(
+            "aria-label",
+            meta?.label || "Auto"
+          );
+        }
+        if (composerAutoTitle) {
+          composerAutoTitle.textContent = "Auto";
+        }
+        if (composerAutoDesc) {
+          composerAutoDesc.textContent = meta?.desc || "";
+        }
+      }
+
+      function setModelMenuOpen(open) {
+        modelMenuOpen = !!open;
+        if (composerModelTrigger) {
+          composerModelTrigger.setAttribute(
+            "aria-expanded",
+            modelMenuOpen ? "true" : "false"
+          );
+        }
+        composerModelMenu?.classList.toggle("hidden", !modelMenuOpen);
+        if (modelMenuOpen) {
+          syncComposerAutoSwitches();
+          if (composerModelSearch) {
+            composerModelSearch.value = modelSearchQuery;
+            if (!openRouterAuto) {
+              requestAnimationFrame(() => composerModelSearch.focus());
+            }
+          }
+          try {
+            window.lucide?.createIcons?.();
+          } catch (_) {}
+        }
+      }
+
+      function renderComposerModelList() {
+        if (!composerModelList) return;
+        composerModelList.innerHTML = "";
+        if (openRouterAuto === "free" || openRouterAuto === "auto") return;
+
+        const q = modelSearchQuery.trim().toLowerCase();
+        const filtered = composerModels.filter((model) => {
+          if (!q) return true;
+          const hay = `${model.id} ${model.name || ""}`.toLowerCase();
+          return hay.includes(q);
+        });
+
+        if (!filtered.length) {
+          const empty = document.createElement("div");
+          empty.className = "composer-model-empty";
+          empty.textContent = composerModels.length
+            ? "No models match your search."
+            : selectedModelId
+              ? "Could not load model list."
+              : "Configure a provider in Settings.";
+          composerModelList.appendChild(empty);
+          return;
+        }
+
+        for (const model of filtered) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          const active = model.id === selectedModelId;
+          btn.className = "composer-model-option" + (active ? " active" : "");
+          btn.setAttribute("role", "option");
+          btn.setAttribute("aria-selected", active ? "true" : "false");
+          btn.title = model.id;
+
+          const main = document.createElement("span");
+          main.className = "composer-model-option-main";
+          const nameEl = document.createElement("span");
+          nameEl.className = "composer-model-option-name";
+          nameEl.textContent = shortModelLabel(model.id, model.name);
+          main.appendChild(nameEl);
+          if (model.tag) {
+            const tag = document.createElement("span");
+            tag.className = "composer-model-option-tag";
+            tag.textContent = model.tag;
+            main.appendChild(tag);
+          }
+
+          const check = document.createElement("span");
+          check.className = "composer-model-option-check";
+          check.innerHTML =
+            '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+          btn.appendChild(main);
+          btn.appendChild(check);
+          btn.addEventListener("click", () => {
+            selectComposerModel(model.id, model.name).catch(() => {});
+          });
+          composerModelList.appendChild(btn);
+        }
+      }
+
+      async function persistComposerSettings(patch) {
+        const api = window.slopApp?.agentSettings;
+        if (!api?.get || !api?.set) return;
+        try {
+          const cur = (await api.get()) || {};
+          await api.set({ ...cur, ...patch });
+        } catch (_) {}
+      }
+
+      async function selectComposerModel(id, name) {
+        selectedModelId = String(id || "").trim();
+        openRouterAuto = "";
+        if (selectedModelId === OPENROUTER_AUTO.free.id) openRouterAuto = "free";
+        else if (selectedModelId === OPENROUTER_AUTO.auto.id) openRouterAuto = "auto";
+        setComposerModelLabel(selectedModelId, name);
+        syncComposerAutoSwitches();
+        renderComposerModelList();
+        setModelMenuOpen(false);
+        await persistComposerSettings({
+          model: selectedModelId,
+          openRouterAuto,
+        });
+      }
+
+      async function setComposerOpenRouterAuto(mode) {
+        if (composerProvider !== "openrouter") return;
+        const next = openRouterAuto === mode ? "" : mode;
+        openRouterAuto = next;
+        if (next === "free") selectedModelId = OPENROUTER_AUTO.free.id;
+        else if (next === "auto") selectedModelId = OPENROUTER_AUTO.auto.id;
+        else if (
+          !selectedModelId ||
+          selectedModelId === OPENROUTER_AUTO.free.id ||
+          selectedModelId === OPENROUTER_AUTO.auto.id
+        ) {
+          const first = composerModels.find(
+            (m) =>
+              m.id !== OPENROUTER_AUTO.free.id &&
+              m.id !== OPENROUTER_AUTO.auto.id
+          );
+          selectedModelId = first?.id || "";
+        }
+        setComposerModelLabel(selectedModelId);
+        syncComposerAutoSwitches();
+        renderComposerModelList();
+        await persistComposerSettings({
+          model: selectedModelId,
+          openRouterAuto: next,
+        });
+      }
+
+      async function loadComposerModels() {
+        const api = window.slopApp?.agentSettings;
+        if (!api?.get) return;
+        const seq = ++modelLoadSeq;
+        let settings = {};
+        try {
+          settings = (await api.get()) || {};
+        } catch (_) {
+          settings = {};
+        }
+        if (seq !== modelLoadSeq) return;
+
+        composerProvider = String(settings.provider || "");
+        openRouterAuto =
+          composerProvider === "openrouter"
+            ? String(settings.openRouterAuto || "")
+            : "";
+        selectedModelId = String(settings.model || "").trim();
+        if (!openRouterAuto) {
+          if (selectedModelId === OPENROUTER_AUTO.free.id) openRouterAuto = "free";
+          else if (selectedModelId === OPENROUTER_AUTO.auto.id) openRouterAuto = "auto";
+        }
+        if (openRouterAuto === "free") selectedModelId = OPENROUTER_AUTO.free.id;
+        if (openRouterAuto === "auto") selectedModelId = OPENROUTER_AUTO.auto.id;
+
+        setComposerModelLabel(selectedModelId, selectedModelId || "Select model");
+        syncComposerAutoSwitches();
+
+        if (!api.listModels) {
+          renderComposerModelList();
+          return;
+        }
+
+        let res = { ok: false, models: [] };
+        try {
+          res = await api.listModels();
+        } catch (_) {
+          res = { ok: false, models: [] };
+        }
+        if (seq !== modelLoadSeq) return;
+
+        composerModels = Array.isArray(res?.models) ? res.models.slice() : [];
+        if (composerProvider === "openrouter") {
+          const autos = [
+            { id: OPENROUTER_AUTO.free.id, name: OPENROUTER_AUTO.free.label, tag: "Free" },
+            { id: OPENROUTER_AUTO.auto.id, name: OPENROUTER_AUTO.auto.label, tag: "Pro" },
+          ];
+          for (const auto of autos.reverse()) {
+            if (!composerModels.some((m) => m.id === auto.id)) {
+              composerModels.unshift(auto);
+            }
+          }
+        }
+        if (
+          selectedModelId &&
+          !composerModels.some((m) => m.id === selectedModelId)
+        ) {
+          composerModels.unshift({ id: selectedModelId, name: selectedModelId });
+        }
+        const match = composerModels.find((m) => m.id === selectedModelId);
+        setComposerModelLabel(
+          selectedModelId,
+          match?.name || selectedModelId || "Select model"
+        );
+        renderComposerModelList();
+      }
+
+      composerModelTrigger?.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setModelMenuOpen(!modelMenuOpen);
+      });
+
+      composerModelSearch?.addEventListener("input", () => {
+        modelSearchQuery = composerModelSearch.value || "";
+        renderComposerModelList();
+      });
+      composerModelSearch?.addEventListener("click", (e) => e.stopPropagation());
+      composerModelSearch?.addEventListener("keydown", (e) => e.stopPropagation());
+
+      composerAutoFree?.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setComposerOpenRouterAuto("free").catch(() => {});
+      });
+      composerAutoPro?.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setComposerOpenRouterAuto("auto").catch(() => {});
+      });
+      composerAutoActiveSwitch?.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (openRouterAuto === "free" || openRouterAuto === "auto") {
+          setComposerOpenRouterAuto(openRouterAuto).catch(() => {});
+        }
+      });
+
+      document.addEventListener("click", (e) => {
+        if (!modelMenuOpen) return;
+        if (composerModelPick?.contains(e.target)) return;
+        setModelMenuOpen(false);
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && modelMenuOpen) setModelMenuOpen(false);
+      });
 
       /* Similar-width chars only — avoids layout jitter during decode. */
       const Q_GHOST_CHARS =
@@ -672,16 +1979,29 @@
         for (let i = 0; i < text.length; i++) {
           const ch = text[i];
           if (ch === " ") {
-            html += " ";
+            // Non-breaking space in a span — plain spaces collapse between inline-block chars.
+            html += '<span class="q-ghost-ch space">&nbsp;</span>';
             continue;
           }
           const resolved = i < locked;
           const display = resolved ? ch : qGhostRandomChar();
+          const safe =
+            display === "<"
+              ? "&lt;"
+              : display === ">"
+                ? "&gt;"
+                : display === "&"
+                  ? "&amp;"
+                  : display === '"'
+                    ? "&quot;"
+                    : display === "'"
+                      ? "&#39;"
+                      : display;
           html +=
             '<span class="q-ghost-ch ' +
             (resolved ? "resolved" : "scramble") +
             '">' +
-            display +
+            safe +
             "</span>";
         }
         qGhost.innerHTML = html;
@@ -689,7 +2009,8 @@
 
       function sizeQGhostMinWidth() {
         if (!qGhost) return;
-        const longest = Q_GHOST_PHRASES.reduce(
+        const phrases = Q_GHOST_PHRASES;
+        const longest = phrases.reduce(
           (a, b) => (a.length >= b.length ? a : b),
           ""
         );
@@ -790,12 +2111,488 @@
         },
       };
 
+      function autosizeComposer() {
+        if (!q) return;
+        q.style.height = "auto";
+        const base = chatModeUi ? 24 : 48;
+        const next = Math.min(180, Math.max(base, q.scrollHeight));
+        q.style.height = next + "px";
+        if (window.__syncBgOccluders) window.__syncBgOccluders();
+      }
+
+      function syncComposerUi(active) {
+        chatModeUi = !!active;
+        Q_GHOST_PHRASES = chatModeUi
+          ? Q_GHOST_PHRASES_CHAT
+          : Q_GHOST_PHRASES_SEARCH;
+        if (composerBar) composerBar.setAttribute("aria-hidden", chatModeUi ? "false" : "true");
+        q.enterKeyHint = chatModeUi ? "send" : "go";
+        if (!active) {
+          setModelMenuOpen(false);
+          if (!chatMessages.length) {
+            document.body.classList.remove("chat-started");
+            chatFirstMessageSent = false;
+          }
+        } else {
+          loadComposerModels().catch(() => {});
+        }
+        qGhostLoop.phraseIdx = 0;
+        qGhostLoop.stop();
+        sizeQGhostMinWidth();
+        autosizeComposer();
+        qGhostLoop.syncVisibility();
+        try {
+          window.lucide?.createIcons?.();
+        } catch (_) {}
+        if (window.__syncBgOccluders) window.__syncBgOccluders();
+        requestAnimationFrame(() => focusHomeSearchInput());
+      }
+
+      window.__slopOnChatModeChange = syncComposerUi;
+
+      function titleFromMessage(text) {
+        const clean = String(text || "").replace(/\s+/g, " ").trim();
+        if (!clean) return "Chat";
+        return clean.length > 42 ? clean.slice(0, 42).trimEnd() + "…" : clean;
+      }
+
+      function notifyChatTitle(text) {
+        const title = titleFromMessage(text);
+        try {
+          window.slopChatBridge?.send("set-title", { title });
+        } catch (_) {}
+      }
+
+      function syncChatToHost() {
+        try {
+          window.slopChatBridge?.send("sync-messages", {
+            messages: chatMessages.map((m) => ({
+              role: m.role,
+              text: m.text,
+              ...(m.reasoning ? { reasoning: m.reasoning } : {}),
+              ...(Number.isFinite(m.reasoningMs)
+                ? { reasoningMs: m.reasoningMs }
+                : {}),
+            })),
+          });
+        } catch (_) {}
+      }
+
+      function clearChatThread() {
+        if (chatThreadInner) chatThreadInner.innerHTML = "";
+      }
+
+      window.__slopApplyChatHistory = (messages, opts = {}) => {
+        // Don't wipe an in-flight assistant "Working..." row.
+        if (chatStreaming && !opts.force) return;
+        chatMessages = Array.isArray(messages)
+          ? messages
+              .filter(
+                (m) =>
+                  m &&
+                  (m.role === "user" || m.role === "assistant") &&
+                  String(m.text || "").trim()
+              )
+              .map((m) => {
+                const entry = {
+                  role: m.role,
+                  text: String(m.text),
+                };
+                if (m.reasoning) entry.reasoning = String(m.reasoning);
+                const ms = Number(m.reasoningMs);
+                if (Number.isFinite(ms) && ms >= 0) entry.reasoningMs = ms;
+                return entry;
+              })
+          : [];
+        clearChatThread();
+        for (const m of chatMessages) {
+          appendChatMessage(m.role, m.text, {
+            reasoning: m.reasoning || "",
+            reasoningMs: m.reasoningMs,
+          });
+        }
+        chatFirstMessageSent = chatMessages.some((m) => m.role === "user");
+        if (opts.started || chatMessages.length) {
+          enterChatStarted();
+        } else if (!chatModeUi) {
+          document.body.classList.remove("chat-started");
+        }
+        scrollChatToBottom();
+      };
+
+      function enterChatStarted() {
+        if (document.body.classList.contains("chat-started")) return;
+        document.body.classList.add("chat-started");
+        if (window.__syncBgOccluders) {
+          requestAnimationFrame(() => window.__syncBgOccluders());
+        }
+      }
+
+      function scrollChatToBottom() {
+        if (!chatThread) return;
+        chatThread.scrollTop = chatThread.scrollHeight;
+      }
+
+      function setMessageBubbleContent(bubble, text, { markdown = false } = {}) {
+        if (!bubble) return;
+        const raw = text || "";
+        const md = window.__slopMarkdown;
+        if (markdown && md?.renderMarkdown) {
+          bubble.innerHTML = md.renderMarkdown(raw);
+          md.enhanceMarkdown?.(bubble);
+        } else {
+          bubble.textContent = raw;
+        }
+      }
+
+      function formatThoughtDuration(ms) {
+        const sec = Math.max(0, Number(ms) || 0) / 1000;
+        if (sec < 1) return "Thought for less than a second";
+        if (sec < 10) {
+          const tenths = Math.round(sec * 10) / 10;
+          const label =
+            Math.abs(tenths - Math.round(tenths)) < 0.05
+              ? String(Math.round(tenths))
+              : tenths.toFixed(1);
+          return `Thought for ${label}s`;
+        }
+        return `Thought for ${Math.round(sec)}s`;
+      }
+
+      function setReasoningContent(shell, text, opts = {}) {
+        if (!shell) return;
+        const body = shell.querySelector(".chat-msg-reasoning-body");
+        const toggle = shell.querySelector(".chat-msg-reasoning-toggle");
+        const raw = String(text || "");
+        const label = opts.label || "";
+        const hasBody = !!raw.trim();
+        const expandable = opts.expandable != null ? !!opts.expandable : hasBody;
+
+        if (!label && !hasBody) {
+          shell.classList.remove("visible", "open");
+          if (body) body.textContent = "";
+          if (toggle) {
+            toggle.textContent = "";
+            toggle.disabled = true;
+          }
+          return;
+        }
+
+        shell.classList.add("visible");
+        if (typeof opts.open === "boolean") {
+          shell.classList.toggle("open", opts.open && hasBody);
+        } else if (!hasBody) {
+          shell.classList.remove("open");
+        }
+        if (body) body.textContent = raw.replace(/^\s+/, "").replace(/\s+$/, "");
+        if (toggle) {
+          toggle.textContent = label || (hasBody ? "Thought" : "Working...");
+          toggle.disabled = !expandable || !hasBody;
+          toggle.setAttribute(
+            "aria-expanded",
+            shell.classList.contains("open") ? "true" : "false"
+          );
+        }
+      }
+
+      function appendChatMessage(role, text, opts = {}) {
+        if (!chatThreadInner) return null;
+        const row = document.createElement("div");
+        row.className =
+          "chat-msg " +
+          role +
+          (opts.streaming ? " streaming" : "") +
+          (opts.error ? " error" : "");
+
+        let reasoningShell = null;
+        if (role === "assistant" && !opts.error) {
+          reasoningShell = document.createElement("div");
+          reasoningShell.className = "chat-msg-reasoning";
+          const toggle = document.createElement("button");
+          toggle.type = "button";
+          toggle.className = "chat-msg-reasoning-toggle";
+          toggle.setAttribute("aria-expanded", "false");
+          toggle.disabled = true;
+          toggle.textContent = "";
+          const body = document.createElement("div");
+          body.className = "chat-msg-reasoning-body";
+          toggle.addEventListener("click", () => {
+            if (toggle.disabled) return;
+            reasoningShell.classList.toggle("open");
+            toggle.setAttribute(
+              "aria-expanded",
+              reasoningShell.classList.contains("open") ? "true" : "false"
+            );
+          });
+          reasoningShell.appendChild(toggle);
+          reasoningShell.appendChild(body);
+          row.appendChild(reasoningShell);
+          if (opts.streaming) {
+            setReasoningContent(reasoningShell, "", {
+              label: "Working...",
+              open: false,
+              expandable: false,
+            });
+          } else if (opts.reasoning) {
+            const ms = Number(opts.reasoningMs);
+            setReasoningContent(reasoningShell, opts.reasoning, {
+              label: Number.isFinite(ms)
+                ? formatThoughtDuration(ms)
+                : "Thought",
+              open: false,
+              expandable: true,
+            });
+            row.classList.add("reasoning-active");
+          }
+        }
+
+        const bubble = document.createElement("div");
+        bubble.className = "chat-msg-bubble";
+        const useMarkdown = role === "assistant" && !opts.error;
+        setMessageBubbleContent(bubble, text || "", { markdown: useMarkdown });
+        if (text) row.classList.add("has-content");
+
+        row.appendChild(bubble);
+        chatThreadInner.appendChild(row);
+        scrollChatToBottom();
+        return { row, bubble, reasoningShell };
+      }
+
+      function setComposerBusy(busy) {
+        chatStreaming = !!busy;
+        if (q) q.disabled = !!busy;
+        const send = document.getElementById("composerSend");
+        if (send) send.disabled = !!busy;
+        form?.classList.toggle("is-streaming", !!busy);
+      }
+
+      async function streamAssistantReply(pending = null) {
+        const api = window.slopApp?.slopAi;
+        if (!api?.stream) {
+          if (pending?.row) {
+            pending.row.classList.remove("streaming");
+            pending.row.classList.add("error");
+            setReasoningContent(pending.reasoningShell, "", {
+              label: "",
+              open: false,
+              expandable: false,
+            });
+            setMessageBubbleContent(
+              pending.bubble,
+              "Chat is not available in this session.",
+              { markdown: false }
+            );
+          } else {
+            appendChatMessage(
+              "assistant",
+              "Chat is not available in this session.",
+              { error: true }
+            );
+          }
+          setComposerBusy(false);
+          return;
+        }
+
+        const created =
+          pending?.row && pending?.bubble
+            ? pending
+            : appendChatMessage("assistant", "", { streaming: true });
+        const { row, bubble, reasoningShell } = created;
+        setReasoningContent(reasoningShell, "", {
+          label: "Working...",
+          open: false,
+          expandable: false,
+        });
+        scrollChatToBottom();
+
+        let assembled = "";
+        let reasoningAssembled = "";
+        let reasoningStartedAt = 0;
+        let reasoningEndedAt = 0;
+        let thoughtFinished = false;
+        setComposerBusy(true);
+
+        const finishThoughtLabel = () => {
+          if (thoughtFinished || !reasoningAssembled.trim()) return;
+          thoughtFinished = true;
+          if (!reasoningEndedAt) reasoningEndedAt = Date.now();
+          const ms = Math.max(
+            0,
+            reasoningEndedAt - (reasoningStartedAt || reasoningEndedAt)
+          );
+          row.dataset.reasoningMs = String(ms);
+          row.classList.add("reasoning-active");
+          setReasoningContent(reasoningShell, reasoningAssembled, {
+            label: formatThoughtDuration(ms),
+            open: false,
+            expandable: true,
+          });
+        };
+
+        const payloadMessages = [
+          CHAT_SYSTEM,
+          ...chatMessages.map((m) => ({ role: m.role, content: m.text })),
+        ];
+
+        try {
+          await api.stream(
+            { messages: payloadMessages },
+            {
+              onChunk: (delta, meta = {}) => {
+                const kind =
+                  meta?.kind === "reasoning" ? "reasoning" : "content";
+                if (kind === "reasoning") {
+                  if (!reasoningStartedAt) reasoningStartedAt = Date.now();
+                  reasoningAssembled += delta;
+                  row.classList.add("reasoning-active");
+                  setReasoningContent(reasoningShell, reasoningAssembled, {
+                    label: "Thinking...",
+                    open: true,
+                    expandable: true,
+                  });
+                } else {
+                  if (reasoningAssembled.trim() && !thoughtFinished) {
+                    reasoningEndedAt = Date.now();
+                    finishThoughtLabel();
+                  } else if (!reasoningAssembled.trim()) {
+                    setReasoningContent(reasoningShell, "", {
+                      label: "",
+                      open: false,
+                      expandable: false,
+                    });
+                  }
+                  assembled += delta;
+                  row.classList.add("has-content");
+                  setMessageBubbleContent(bubble, assembled, {
+                    markdown: true,
+                  });
+                }
+                scrollChatToBottom();
+              },
+              onDone: (text, meta = {}) => {
+                assembled = text || assembled;
+                if (meta?.reasoning) reasoningAssembled = meta.reasoning;
+                setMessageBubbleContent(bubble, assembled, { markdown: true });
+                if (reasoningAssembled.trim()) {
+                  if (!reasoningEndedAt) reasoningEndedAt = Date.now();
+                  finishThoughtLabel();
+                } else {
+                  setReasoningContent(reasoningShell, "", {
+                    label: "",
+                    open: false,
+                    expandable: false,
+                  });
+                }
+                row.classList.remove("streaming");
+                row.classList.toggle("has-content", !!assembled.trim());
+                const reasoningMs = Number(row.dataset.reasoningMs);
+                chatMessages.push({
+                  role: "assistant",
+                  text: assembled,
+                  ...(reasoningAssembled.trim()
+                    ? {
+                        reasoning: reasoningAssembled,
+                        ...(Number.isFinite(reasoningMs)
+                          ? { reasoningMs }
+                          : {}),
+                      }
+                    : {}),
+                });
+                syncChatToHost();
+                setComposerBusy(false);
+                focusHomeSearchInput();
+              },
+              onError: (error) => {
+                row.classList.remove("streaming");
+                row.classList.add("error");
+                if (reasoningAssembled.trim()) {
+                  if (!reasoningEndedAt) reasoningEndedAt = Date.now();
+                  finishThoughtLabel();
+                } else {
+                  setReasoningContent(reasoningShell, "", {
+                    label: "",
+                    open: false,
+                    expandable: false,
+                  });
+                }
+                setMessageBubbleContent(bubble, error || "Request failed", {
+                  markdown: false,
+                });
+                setComposerBusy(false);
+                focusHomeSearchInput();
+              },
+            }
+          );
+        } catch (err) {
+          row.classList.remove("streaming");
+          row.classList.add("error");
+          setReasoningContent(reasoningShell, "", {
+            label: "",
+            open: false,
+            expandable: false,
+          });
+          setMessageBubbleContent(bubble, err?.message || "Request failed", {
+            markdown: false,
+          });
+          setComposerBusy(false);
+          focusHomeSearchInput();
+        }
+      }
+
+      function submitChatMessage() {
+        if (chatStreaming) return;
+        const text = q.value.trim();
+        if (!text) return;
+
+        if (!chatFirstMessageSent) {
+          chatFirstMessageSent = true;
+          notifyChatTitle(text);
+        }
+
+        enterChatStarted();
+        chatMessages.push({ role: "user", text });
+        appendChatMessage("user", text);
+
+        // Show Working... immediately — before any IPC/sync delay.
+        setComposerBusy(true);
+        const pending = appendChatMessage("assistant", "", { streaming: true });
+        setReasoningContent(pending.reasoningShell, "", {
+          label: "Working...",
+          open: false,
+          expandable: false,
+        });
+        scrollChatToBottom();
+
+        syncChatToHost();
+
+        q.value = "";
+        searchBox.classList.remove("has-text");
+        autosizeComposer();
+        qGhostLoop.syncVisibility();
+
+        streamAssistantReply(pending);
+      }
+
       q.addEventListener("input", () => {
         searchBox.classList.toggle("has-text", q.value.trim().length > 0);
+        autosizeComposer();
         qGhostLoop.syncVisibility();
       });
       q.addEventListener("focus", () => qGhostLoop.syncVisibility());
       q.addEventListener("blur", () => qGhostLoop.syncVisibility());
+      q.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        if (chatModeUi) {
+          if (e.shiftKey) return; // newline
+          e.preventDefault();
+          submitChatMessage();
+          return;
+        }
+        if (!e.shiftKey) {
+          e.preventDefault();
+          form.requestSubmit();
+        }
+      });
 
       function focusHomeSearchInput() {
         if (!q) return;
@@ -831,13 +2628,19 @@
 
       form.addEventListener("submit", (e) => {
         e.preventDefault();
+        if (chatModeUi || document.body.classList.contains("chat-mode")) {
+          submitChatMessage();
+          return;
+        }
         const url = toURL(q.value);
         if (url) window.location.href = url;
       });
 
       sizeQGhostMinWidth();
       qGhostLoop.syncVisibility();
+      autosizeComposer();
       focusHomeSearchInput();
+      if (chatModeUi) syncComposerUi(true);
 
       function applyFooterBuildInfo(info) {
         const build = document.getElementById("homeBuild");

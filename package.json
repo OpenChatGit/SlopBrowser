@@ -35,6 +35,7 @@
     "dompurify": "^3.4.12",
     "electron-chrome-extensions": "^4.9.0",
     "electron-chrome-web-store": "^0.13.0",
+    "highlight.js": "^11.11.1",
     "lucide": "^1.23.0",
     "marked": "^18.0.6"
   }

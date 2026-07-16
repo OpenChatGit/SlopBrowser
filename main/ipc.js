@@ -24,6 +24,7 @@ function registerIpc(deps) {
     bookmarkStore,
     downloadManager,
     agentSettingsStore,
+    sessionStore,
     createWindow,
     getCachedBuildInfo,
     setCachedBuildInfo,
@@ -202,6 +203,10 @@ function registerIpc(deps) {
   ipcMain.handle("agentSettings:get", () => agentSettingsStore.get());
   ipcMain.handle("agentSettings:set", (_e, data) => agentSettingsStore.set(data));
 
+  ipcMain.handle("session:get", () => sessionStore.get());
+  ipcMain.handle("session:set", (_e, state) => sessionStore.set(state));
+  ipcMain.handle("session:clear", () => sessionStore.clear());
+
   ipcMain.handle("agentSettings:listModels", async (_e, overrides = {}) => {
     const settings = { ...agentSettingsStore.get(), ...(overrides && typeof overrides === "object" ? overrides : {}) };
     try {
@@ -221,12 +226,25 @@ function registerIpc(deps) {
     };
 
     try {
-      const text = await streamChat({
+      const result = await streamChat({
         ...settings,
         messages,
-        onDelta: (delta) => emit({ type: "chunk", delta }),
+        onDelta: (piece) => {
+          if (typeof piece === "string") {
+            if (!piece) return;
+            emit({ type: "chunk", kind: "content", delta: piece });
+            return;
+          }
+          const kind = piece?.kind === "reasoning" ? "reasoning" : "content";
+          const delta = piece?.text || "";
+          if (!delta) return;
+          emit({ type: "chunk", kind, delta });
+        },
       });
-      emit({ type: "done", text });
+      const text = typeof result === "string" ? result : result?.text || "";
+      const reasoning =
+        typeof result === "string" ? "" : result?.reasoning || "";
+      emit({ type: "done", text, reasoning });
       return { ok: true, requestId: id };
     } catch (err) {
       const error = err?.message || String(err);
