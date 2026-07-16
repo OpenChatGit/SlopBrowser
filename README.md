@@ -1,3 +1,5 @@
+![SlopBrowser](slopbrowser.png)
+
 # SlopBrowser
 
 A desktop browser built with Electron/Chromium — a full tabbed UI plus **ad
